@@ -705,7 +705,7 @@ nav{display:flex;justify-content:center;margin-bottom:48px;padding:0 24px}
 <!-- ═══ SCOREBOARD ═══ -->
 <div class="page" id="page-scoreboard">
   <div class="infobar">
-    Scores fetched live via AI web search. <strong>Scoring:</strong> +1pt per goal scored · Stage bonus (flat): R16 +3 · QF +6 · SF +9 · Runner-up +12 · Champion +15.
+    Scores fetched live via AI web search. <strong>Scoring:</strong> +1pt per goal scored · -0.5pt per goal conceded · Stage bonus (flat): R16 +3 · QF +6 · SF +9 · Runner-up +12 · Champion +15.
   </div>
 
   <!-- Prize banners -->
@@ -1278,7 +1278,7 @@ function renderScoreboard(){
           ${teamLine(bt,'bot')}
         </div>
       </div>
-      <div class="score-pts">${sc}<small>pts</small></div>`;
+      <div class="score-pts">${Number.isInteger(sc)?sc:sc.toFixed(1)}<small>pts</small></div>`;
     el.appendChild(card);
   });
 }
@@ -1301,7 +1301,8 @@ async function fetchLiveScores(){
   const scoringRules = [
     'SCORING SYSTEM:',
     '1. Goals scored: +1pt per goal scored (across ALL matches in ALL rounds)',
-    '2. Stage bonus — award ONLY the single bonus for the stage the team EXITED (or currently sits at). NOT cumulative:',
+    '2. Goals conceded: -0.5pt per goal conceded (across ALL matches in ALL rounds)',
+    '3. Stage bonus — award ONLY the single bonus for the stage the team EXITED (or currently sits at). NOT cumulative:',
     '   - Eliminated in group stage = +0 bonus',
     '   - Eliminated in Round of 16 = +3pt bonus',
     '   - Eliminated in Quarter-final = +6pt bonus',
@@ -1310,24 +1311,25 @@ async function fetchLiveScores(){
     '   - Won the tournament (Champion) = +15pt bonus',
     '',
     'IMPORTANT:',
-    '- Goals means goals scored BY that team, not conceded. Count every goal in every round.',
+    '- Goals scored = goals scored BY that team. Goals conceded = goals scored AGAINST that team.',
+    '- Count goals in ALL rounds including knockouts.',
     '- Stage bonus is FLAT — champion gets exactly +15, QF exit gets exactly +6.',
     '- If a team is still in the tournament, award the bonus for their current stage reached.',
-    '- Do NOT include wins/draws/losses — only goals and the single stage bonus.',
+    '- Points = (goals scored × 1) + (goals conceded × -0.5) + stage bonus. Points CAN be negative.',
     '- Use ONLY completed matches. Do not speculate about future results.',
     '',
-    'EXAMPLE: Team scores 5 goals and reaches QF before elimination = 5 + 6 = 11 points.',
-    'EXAMPLE: Champion scores 12 goals = 12 + 15 = 27 points.',
+    'EXAMPLE: Team scores 5, concedes 2, reaches QF = (5×1) + (2×-0.5) + 6 = 5 - 1 + 6 = 10 points.',
+    'EXAMPLE: Champion scores 12, concedes 4 = (12×1) + (4×-0.5) + 15 = 12 - 2 + 15 = 25 points.',
     '',
     'Return ONLY a valid JSON object, no markdown, no explanation:',
     '{',
     '  "lastUpdated": "e.g. Group Stage Day 4 or After Quarter-Finals",',
     '  "teams": {',
-    '    "TeamName": { "points": 11, "goals": 5, "knockoutBonus": 6, "status": "5G · QF (eliminated)" }',
+    '    "TeamName": { "points": 10, "goalsScored": 5, "goalsConceded": 2, "knockoutBonus": 6, "status": "5G 2GA · QF (eliminated)" }',
     '  }',
     '}',
     '',
-    'Include every team. If no matches played: points=0, goals=0, knockoutBonus=0, status="Yet to play".'
+    'Include every team. If no matches played: points=0, goalsScored=0, goalsConceded=0, knockoutBonus=0, status="Yet to play".'
   ].join('\n');
 
   const teamList = allTeams.map((t,i) => (i+1) + '. ' + t).join('\n');
@@ -1367,18 +1369,25 @@ async function fetchLiveScores(){
     const textBlocks=(data.content||[]).filter(b=>b.type==='text');
     if(!textBlocks.length) throw new Error('No text in response');
     const raw=textBlocks[textBlocks.length-1].text;
-    const clean=raw.split('```json').join('').split('```').join('').trim();
-    const parsed=JSON.parse(clean);
+    // Extract JSON object from anywhere in the response — model sometimes adds preamble
+    const jsonMatch=raw.match(/\{[\s\S]*\}/);
+    if(!jsonMatch) throw new Error('No JSON found in response');
+    const parsed=JSON.parse(jsonMatch[0]);
 
     S.players.forEach(p=>{
       const d=S.draws[p]||{};
       let total=0;
       [d.top,d.mid,d.bot].filter(Boolean).forEach(teamName=>{
         if(parsed.teams&&parsed.teams[teamName]){
-          total+=parsed.teams[teamName].points||0;
+          const td=parsed.teams[teamName];
+          // Recalculate to ensure accuracy
+          const gs=td.goalsScored||td.goals||0;
+          const gc=td.goalsConceded||0;
+          const kb=td.knockoutBonus||0;
+          total+=(gs*1)+(gc*-0.5)+kb;
         }
       });
-      S.scores[p]=total;
+      S.scores[p]=Math.round(total*10)/10; // round to 1dp
     });
 
     S.teamStatuses=parsed.teams||{};
@@ -1413,9 +1422,10 @@ function buildManualScoreEditor(){
   let h='<div style="background:var(--ink3);border:1px solid var(--border2);border-radius:var(--r2);padding:20px;margin-top:8px">';
   h+='<div style="font-size:8px;letter-spacing:.3em;text-transform:uppercase;color:var(--gold);margin-bottom:16px">Manual Score Entry</div>';
   // Column headers
-  h+='<div style="display:grid;grid-template-columns:minmax(0,1fr) 64px 140px;gap:8px;align-items:center;padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:10px">';
+  h+='<div style="display:grid;grid-template-columns:minmax(0,1fr) 56px 56px 130px;gap:8px;align-items:center;padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:10px">';
   h+='<span style="font-size:8px;letter-spacing:.2em;color:var(--silver2)">TEAM</span>';
-  h+='<span style="font-size:8px;letter-spacing:.2em;color:var(--silver2);text-align:center">GOALS</span>';
+  h+='<span style="font-size:8px;letter-spacing:.2em;color:var(--emerald2);text-align:center">SCORED</span>';
+  h+='<span style="font-size:8px;letter-spacing:.2em;color:var(--ruby2);text-align:center">CONCEDED</span>';
   h+='<span style="font-size:8px;letter-spacing:.2em;color:var(--silver2)">STAGE REACHED</span>';
   h+='</div>';
   allTeams.forEach(name=>{
@@ -1424,18 +1434,20 @@ function buildManualScoreEditor(){
     const tier=t?t.half:'';
     const tierCol=tier==='top'?'var(--emerald2)':tier==='mid'?'#7ab0f0':'#e87070';
     const cur=S.teamStatuses&&S.teamStatuses[name];
-    const goals=cur?cur.goals||0:0;
+    const goals=cur?cur.goalsScored||cur.goals||0:0;
+    const conceded=cur?cur.goalsConceded||0:0;
     const bonus=cur?cur.knockoutBonus||0:0;
     const opts=stageOpts.map(o=>'<option value="'+o.v+'" '+(bonus===o.v?'selected':'')+'>'+o.l+'</option>').join('');
-    h+='<div style="display:grid;grid-template-columns:minmax(0,1fr) 64px 140px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">';
+    h+='<div style="display:grid;grid-template-columns:minmax(0,1fr) 56px 56px 130px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">';
     h+='<span style="font-size:11px;font-family:Cormorant Garamond,serif;font-style:italic;color:'+tierCol+'">'+flag+' '+name+'</span>';
-    h+='<input type="number" min="0" value="'+goals+'" style="width:100%;background:var(--ink2);border:1px solid var(--border);border-radius:2px;color:var(--platinum);font-size:11px;padding:5px 6px;text-align:center;font-family:Cormorant Garamond,serif" data-team="'+name+'" class="manual-goals">';
+    h+='<input type="number" min="0" value="'+goals+'" style="width:100%;background:var(--ink2);border:1px solid rgba(61,184,130,.3);border-radius:2px;color:var(--emerald2);font-size:11px;padding:5px 6px;text-align:center;font-family:Cormorant Garamond,serif" data-team="'+name+'" class="manual-goals">';
+    h+='<input type="number" min="0" value="'+conceded+'" style="width:100%;background:var(--ink2);border:1px solid rgba(217,79,79,.3);border-radius:2px;color:var(--ruby2);font-size:11px;padding:5px 6px;text-align:center;font-family:Cormorant Garamond,serif" data-team="'+name+'" class="manual-conceded">';
     h+='<select style="width:100%;background:var(--ink2);border:1px solid var(--border);border-radius:2px;color:var(--platinum);font-size:10px;padding:5px 6px;font-family:Montserrat,sans-serif" data-team="'+name+'" class="manual-stage">'+opts+'</select>';
     h+='</div>';
   });
   h+='<div style="display:flex;gap:10px;margin-top:14px;align-items:center">';
   h+='<button onclick="applyManualScores()" style="background:var(--gold);border:none;border-radius:2px;color:var(--ink);font-family:Montserrat,sans-serif;font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;padding:10px 22px;cursor:pointer">Apply Scores</button>';
-  h+='<span style="font-size:9px;color:var(--silver2);letter-spacing:.06em">Points = goals + stage bonus</span>';
+  h+='<span style="font-size:9px;color:var(--silver2);letter-spacing:.06em">+1 per goal scored · -0.5 per goal conceded · stage bonus</span>';
   h+='</div>';
   h+='</div>';
   return h;
@@ -1446,11 +1458,14 @@ function applyManualScores(){
   const stageLabels={0:'',3:'R16',6:'QF',9:'SF',12:'Final',15:'Champion'};
   document.querySelectorAll('.manual-goals').forEach(inp=>{
     const name=inp.dataset.team;
-    const goals=parseInt(inp.value)||0;
+    const goalsScored=parseInt(inp.value)||0;
+    const concededEl=document.querySelector('.manual-conceded[data-team="'+name+'"]');
+    const goalsConceded=parseInt(concededEl?concededEl.value:0)||0;
     const stageEl=document.querySelector('.manual-stage[data-team="'+name+'"]');
     const bonus=parseInt(stageEl?stageEl.value:0)||0;
     const stageLabel=stageLabels[bonus]||'';
-    S.teamStatuses[name]={goals,knockoutBonus:bonus,points:goals+bonus,status:goals+'G'+(stageLabel?' · '+stageLabel:'')};
+    const points=Math.round(((goalsScored*1)+(goalsConceded*-0.5)+bonus)*10)/10;
+    S.teamStatuses[name]={goalsScored,goalsConceded,knockoutBonus:bonus,points,status:goalsScored+'G '+goalsConceded+'GA'+(stageLabel?' · '+stageLabel:'')};
   });
   S.players.forEach(p=>{
     const d=S.draws[p]||{};
@@ -1458,7 +1473,7 @@ function applyManualScores(){
     [d.top,d.mid,d.bot].filter(Boolean).forEach(name=>{
       total+=(S.teamStatuses[name]&&S.teamStatuses[name].points)||0;
     });
-    S.scores[p]=total;
+    S.scores[p]=Math.round(total*10)/10;
   });
   S.lastUpdated='Manual entry '+new Date().toLocaleDateString('en-GB',{day:'numeric',month:'short'});
   save();
