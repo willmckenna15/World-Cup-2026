@@ -457,6 +457,10 @@ nav{display:flex;justify-content:center;margin-bottom:48px;padding:0 24px}
 .modal-btns{display:flex;gap:10px;justify-content:center}
 
 #confetti-c{position:fixed;inset:0;pointer-events:none;z-index:100}
+/* Hide number input spinners everywhere */
+input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none!important;display:none!important}
+input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none!important;display:none!important}
+input[type=number]{-moz-appearance:textfield!important;appearance:textfield!important}
 </style>
 </head>
 <body>
@@ -1476,36 +1480,42 @@ function renderScoresPage(){
         const bstH=(etH+5)%24;
         const timeStr=String(bstH).padStart(2,'0')+':'+mm+' BST';
 
-        h+='<div style="display:grid;grid-template-columns:auto 1fr auto 36px 3px 36px 1fr;gap:6px;align-items:center;';
-        h+=bg+';border:1px solid var(--border);'+border+';border-radius:var(--r);padding:8px 12px;margin-bottom:5px">';
+        // Score input style — no spinner arrows
+        const inputStyle='width:40px;background:var(--ink3);border:1px solid var(--border2);border-radius:2px;'
+          +'color:var(--platinum);font-size:1.1rem;font-family:Cormorant Garamond,serif;font-weight:300;'
+          +'padding:5px 4px;text-align:center;';
 
-        // Time
-        h+='<span style="font-size:8px;color:var(--silver2);letter-spacing:.05em;white-space:nowrap">'+timeStr+'</span>';
-
-        // Home team
         const homeCol=homeDrawn?'var(--gold2)':'var(--platinum)';
         const homeFontStyle=homeDrawn?'font-weight:500':'font-weight:300';
-        h+='<span style="font-family:Cormorant Garamond,serif;font-size:.95rem;font-style:italic;color:'+homeCol+';'+homeFontStyle+';text-align:right">'+match.home+'</span>';
-
-        // Home score input
-        h+='<input type="number" min="0" max="99" value="'+res.home+'" ';
-        h+='style="width:36px;background:var(--ink3);border:1px solid var(--border);border-radius:2px;';
-        h+='color:var(--platinum);font-size:1rem;font-family:Cormorant Garamond,serif;padding:4px;text-align:center" ';
-        h+='data-match="'+match.id+'" data-side="home" class="match-score-input">';
-
-        // vs divider
-        h+='<span style="font-size:8px;color:var(--silver2);text-align:center">–</span>';
-
-        // Away score input
-        h+='<input type="number" min="0" max="99" value="'+res.away+'" ';
-        h+='style="width:36px;background:var(--ink3);border:1px solid var(--border);border-radius:2px;';
-        h+='color:var(--platinum);font-size:1rem;font-family:Cormorant Garamond,serif;padding:4px;text-align:center" ';
-        h+='data-match="'+match.id+'" data-side="away" class="match-score-input">';
-
-        // Away team
         const awayCol=awayDrawn?'var(--gold2)':'var(--platinum)';
         const awayFontStyle=awayDrawn?'font-weight:500':'font-weight:300';
-        h+='<span style="font-family:Cormorant Garamond,serif;font-size:.95rem;font-style:italic;color:'+awayCol+';'+awayFontStyle+'">'+match.away+'</span>';
+
+        // Layout: [time] [home name] [home score] [–] [away score] [away name]
+        // Fixed widths for score columns, home name right-aligned, away name left-aligned
+        h+='<div style="display:grid;grid-template-columns:52px 1fr 40px 18px 40px 1fr;gap:6px;align-items:center;';
+        h+=bg+';border:1px solid var(--border);'+border+';border-radius:var(--r);padding:10px 12px;margin-bottom:5px">';
+
+        // Time
+        h+='<span style="font-size:8px;color:var(--silver2);letter-spacing:.04em;white-space:nowrap">'+timeStr+'</span>';
+
+        // Home team — right aligned
+        h+='<span style="font-family:Cormorant Garamond,serif;font-size:.95rem;font-style:italic;color:'+homeCol+';'+homeFontStyle+';text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+match.home+'</span>';
+
+        // Home score
+        h+='<input type="number" min="0" max="99" value="'+res.home+'" ';
+        h+='style="'+inputStyle+'" ';
+        h+='data-match="'+match.id+'" data-side="home" class="match-score-input">';
+
+        // Divider
+        h+='<span style="font-size:9px;color:var(--silver2);text-align:center;font-family:Cormorant Garamond,serif">–</span>';
+
+        // Away score
+        h+='<input type="number" min="0" max="99" value="'+res.away+'" ';
+        h+='style="'+inputStyle+'" ';
+        h+='data-match="'+match.id+'" data-side="away" class="match-score-input">';
+
+        // Away team — left aligned
+        h+='<span style="font-family:Cormorant Garamond,serif;font-size:.95rem;font-style:italic;color:'+awayCol+';'+awayFontStyle+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+match.away+'</span>';
 
         h+='</div>';
       });
