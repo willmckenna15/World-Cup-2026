@@ -482,6 +482,7 @@ nav{display:flex;justify-content:center;margin-bottom:48px;padding:0 24px}
 <nav>
   <button class="nav-item active" onclick="switchTab('setup')">Setup</button>
   <button class="nav-item" onclick="switchTab('draw')">The Draw</button>
+  <button class="nav-item" onclick="switchTab('scores')">Scores</button>
   <button class="nav-item" onclick="switchTab('scoreboard')">Standings</button>
 </nav>
 
@@ -702,10 +703,22 @@ nav{display:flex;justify-content:center;margin-bottom:48px;padding:0 24px}
   <div id="draw-results"></div>
 </div>
 
+<!-- ═══ SCORES ═══ -->
+<div class="page" id="page-scores">
+  <div class="infobar">Enter each team's total goals scored and conceded after their matches. Points update automatically in Standings.</div>
+
+  <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:center">
+    <div style="flex:1;font-size:9px;letter-spacing:.12em;color:var(--silver2)" id="scores-last-updated"></div>
+    <button class="btn-gold" onclick="saveTeamScores()">Save &amp; Update Standings</button>
+  </div>
+
+  <div id="scores-page-content"></div>
+</div>
+
 <!-- ═══ SCOREBOARD ═══ -->
 <div class="page" id="page-scoreboard">
   <div class="infobar">
-    Scores fetched live via AI web search. <strong>Scoring:</strong> +1pt per goal scored · -0.5pt per goal conceded · Stage bonus (flat): R16 +3 · QF +6 · SF +9 · Runner-up +12 · Champion +15.
+    <strong>Scoring:</strong> +1pt per goal scored · -0.5pt per goal conceded · Stage bonus: R16 +3 · QF +6 · SF +9 · Runner-up +12 · Champion +15. Enter scores on the <strong>Scores</strong> tab.
   </div>
 
   <!-- Prize banners -->
@@ -723,12 +736,11 @@ nav{display:flex;justify-content:center;margin-bottom:48px;padding:0 24px}
   </div>
 
   <div style="display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap;align-items:center">
-    <button class="btn-gold" id="btn-refresh" onclick="fetchLiveScores()">↻ Refresh Scores</button>
     <span id="last-updated" style="font-size:9px;letter-spacing:.12em;color:var(--silver2)"></span>
     <div style="flex:1"></div>
+    <button class="btn-ghost" onclick="switchTab('scores')">✏ Enter Scores</button>
     <button class="btn-ghost" onclick="exportAll()">Copy Results</button>
   </div>
-  <div id="fetch-status" style="display:none;margin-bottom:16px;"></div>
 
   <div class="section-label" style="margin-bottom:14px">Points Leaderboard</div>
   <div id="score-list"></div>
@@ -804,10 +816,11 @@ const avail=h=>S.teams.filter(t=>t.half===h&&!drawnSet().has(t.name));
 
 // ── TABS ──
 function switchTab(tab){
-  document.querySelectorAll('.nav-item').forEach((b,i)=>b.classList.toggle('active',['setup','draw','scoreboard'][i]===tab));
+  document.querySelectorAll('.nav-item').forEach((b,i)=>b.classList.toggle('active',['setup','draw','scores','scoreboard'][i]===tab));
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-'+tab).classList.add('active');
   if(tab==='draw')renderDraw();
+  if(tab==='scores')renderScoresPage();
   if(tab==='scoreboard'){renderScoreboard();updatePotDisplay();if(S.lastUpdated)document.getElementById('last-updated').textContent=`Updated: ${S.lastUpdated}`;}
   if(tab==='setup')renderSetup();
 }
@@ -1282,130 +1295,143 @@ function renderScoreboard(){
     el.appendChild(card);
   });
 }
-// ── LIVE SCORE FETCHING ──
-async function fetchLiveScores(){
-  if(!S.players.length){toast('Add participants first');return;}
-  const allTeams=[...new Set(S.players.flatMap(p=>{
+// ── SCORES PAGE ──
+function renderScoresPage(){
+  const el=document.getElementById('scores-page-content');
+  if(!el) return;
+
+  // Get all teams that have been drawn
+  const drawnTeams=[...new Set(S.players.flatMap(p=>{
     const d=S.draws[p]||{};
     return [d.top,d.mid,d.bot].filter(Boolean);
-  }))];
-  if(!allTeams.length){toast('Complete the draw first');return;}
+  }))].map(name=>S.teams.find(t=>t.name===name)).filter(Boolean)
+    .sort((a,b)=>a.rank-b.rank);
 
-  const btn=document.getElementById('btn-refresh');
-  const statusEl=document.getElementById('fetch-status');
-  btn.disabled=true;
-  btn.textContent='Fetching…';
-  statusEl.style.display='block';statusEl.dataset.active='1';
-  statusEl.innerHTML='<div style="font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--gold);animation:pulse .8s ease-in-out infinite">Consulting live World Cup results…</div>';
-
-  const scoringRules = [
-    'SCORING SYSTEM:',
-    '1. Goals scored: +1pt per goal scored (across ALL matches in ALL rounds)',
-    '2. Goals conceded: -0.5pt per goal conceded (across ALL matches in ALL rounds)',
-    '3. Stage bonus — award ONLY the single bonus for the stage the team EXITED (or currently sits at). NOT cumulative:',
-    '   - Eliminated in group stage = +0 bonus',
-    '   - Eliminated in Round of 16 = +3pt bonus',
-    '   - Eliminated in Quarter-final = +6pt bonus',
-    '   - Eliminated in Semi-final = +9pt bonus',
-    '   - Lost in Final (Runner-up) = +12pt bonus',
-    '   - Won the tournament (Champion) = +15pt bonus',
-    '',
-    'IMPORTANT:',
-    '- Goals scored = goals scored BY that team. Goals conceded = goals scored AGAINST that team.',
-    '- Count goals in ALL rounds including knockouts.',
-    '- Stage bonus is FLAT — champion gets exactly +15, QF exit gets exactly +6.',
-    '- If a team is still in the tournament, award the bonus for their current stage reached.',
-    '- Points = (goals scored × 1) + (goals conceded × -0.5) + stage bonus. Points CAN be negative.',
-    '- Use ONLY completed matches. Do not speculate about future results.',
-    '',
-    'EXAMPLE: Team scores 5, concedes 2, reaches QF = (5×1) + (2×-0.5) + 6 = 5 - 1 + 6 = 10 points.',
-    'EXAMPLE: Champion scores 12, concedes 4 = (12×1) + (4×-0.5) + 15 = 12 - 2 + 15 = 25 points.',
-    '',
-    'Return ONLY a valid JSON object, no markdown, no explanation:',
-    '{',
-    '  "lastUpdated": "e.g. Group Stage Day 4 or After Quarter-Finals",',
-    '  "teams": {',
-    '    "TeamName": { "points": 10, "goalsScored": 5, "goalsConceded": 2, "knockoutBonus": 6, "status": "5G 2GA · QF (eliminated)" }',
-    '  }',
-    '}',
-    '',
-    'Include every team. If no matches played: points=0, goalsScored=0, goalsConceded=0, knockoutBonus=0, status="Yet to play".'
-  ].join('\n');
-
-  const teamList = allTeams.map((t,i) => (i+1) + '. ' + t).join('\n');
-
-  const prompt = 'You are a World Cup 2026 scoring assistant. Today is ' + new Date().toDateString() + '.\n\n'
-    + 'Search the web for the latest 2026 FIFA World Cup results and standings for ALL completed matches.\n\n'
-    + 'For each of these teams, calculate their total sweepstakes points using ONLY confirmed completed matches:\n'
-    + teamList + '\n\n'
-    + scoringRules;
-
-  // Check Worker URL has been configured
-  if(WORKER_URL.includes('YOUR-WORKER')){
-    statusEl.innerHTML='<div style="font-size:9px;letter-spacing:.1em;color:var(--ruby2);margin-bottom:10px">Worker URL not configured yet — enter scores manually for now.</div>'+buildManualScoreEditor();
-    statusEl.style.display='block';statusEl.dataset.active='1';
-    btn.disabled=false;btn.textContent='↻ Auto-fetch Scores';
+  if(!drawnTeams.length){
+    el.innerHTML='<div style="color:var(--silver2);font-size:10px;letter-spacing:.1em">Complete the draw first — drawn teams will appear here.</div>';
     return;
   }
 
-  try{
-    const res=await fetch(WORKER_URL,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        model:'claude-sonnet-4-6',
-        max_tokens:1500,
-        tools:[{type:'web_search_20250305',name:'web_search'}],
-        messages:[{role:'user',content:prompt}]
-      })
+  const stageOpts=[
+    {v:0,l:'Group stage'},
+    {v:3,l:'Round of 16'},
+    {v:6,l:'Quarter-final'},
+    {v:9,l:'Semi-final'},
+    {v:12,l:'Final (runner-up)'},
+    {v:15,l:'Champion'},
+  ];
+
+  let h='';
+
+  // Group by tier
+  const tiers=[
+    {key:'top',label:'Elite',col:'var(--emerald2)',border:'rgba(61,184,130,.2)'},
+    {key:'mid',label:'Contenders',col:'#7ab0f0',border:'rgba(100,160,255,.2)'},
+    {key:'bot',label:'Underdogs',col:'#e87070',border:'rgba(217,79,79,.2)'},
+  ];
+
+  tiers.forEach(tier=>{
+    const tierTeams=drawnTeams.filter(t=>t.half===tier.key);
+    if(!tierTeams.length) return;
+
+    h+='<div style="font-size:8px;font-weight:600;letter-spacing:.3em;text-transform:uppercase;color:'+tier.col+';margin-bottom:10px;margin-top:20px;display:flex;align-items:center;gap:10px">';
+    h+=tier.label;
+    h+='<span style="flex:1;height:1px;background:'+tier.border+';display:block"></span></div>';
+
+    // Header row
+    h+='<div style="display:grid;grid-template-columns:minmax(0,1fr) 60px 60px 150px;gap:8px;align-items:center;padding:0 4px 8px;margin-bottom:4px">';
+    h+='<span style="font-size:8px;letter-spacing:.2em;color:var(--silver2)">TEAM</span>';
+    h+='<span style="font-size:8px;letter-spacing:.2em;color:var(--emerald2);text-align:center">SCORED</span>';
+    h+='<span style="font-size:8px;letter-spacing:.2em;color:var(--ruby2);text-align:center">CONCEDED</span>';
+    h+='<span style="font-size:8px;letter-spacing:.2em;color:var(--silver2)">STAGE</span>';
+    h+='</div>';
+
+    tierTeams.forEach(team=>{
+      const ts=S.teamStatuses&&S.teamStatuses[team.name];
+      const scored=ts?ts.goalsScored||ts.goals||0:0;
+      const conceded=ts?ts.goalsConceded||0:0;
+      const bonus=ts?ts.knockoutBonus||0:0;
+      const pts=ts?ts.points:null;
+      const ptsStr=pts!==null?(Number.isInteger(pts)?pts:pts.toFixed(1))+'pts':'—';
+
+      const opts=stageOpts.map(o=>'<option value="'+o.v+'" '+(bonus===o.v?'selected':'')+'>'+o.l+'</option>').join('');
+
+      h+='<div style="display:grid;grid-template-columns:minmax(0,1fr) 60px 60px 150px;gap:8px;align-items:center;';
+      h+='background:var(--ink2);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px;margin-bottom:6px">';
+
+      // Team name + pts
+      h+='<div>';
+      h+='<div style="font-family:Cormorant Garamond,serif;font-style:italic;font-size:1rem;color:'+tier.col+'">'+team.flag+' '+team.name+'</div>';
+      h+='<div style="font-size:9px;color:var(--silver2);margin-top:2px;letter-spacing:.06em">'+ptsStr+'</div>';
+      h+='</div>';
+
+      // Scored
+      h+='<input type="number" min="0" value="'+scored+'" ';
+      h+='style="width:100%;background:var(--ink3);border:1px solid rgba(61,184,130,.3);border-radius:var(--r);';
+      h+='color:var(--emerald2);font-size:1.1rem;font-family:Cormorant Garamond,serif;padding:6px;text-align:center" ';
+      h+='data-team="'+team.name+'" class="score-input-scored">';
+
+      // Conceded
+      h+='<input type="number" min="0" value="'+conceded+'" ';
+      h+='style="width:100%;background:var(--ink3);border:1px solid rgba(217,79,79,.3);border-radius:var(--r);';
+      h+='color:var(--ruby2);font-size:1.1rem;font-family:Cormorant Garamond,serif;padding:6px;text-align:center" ';
+      h+='data-team="'+team.name+'" class="score-input-conceded">';
+
+      // Stage
+      h+='<select data-team="'+team.name+'" class="score-input-stage" ';
+      h+='style="width:100%;background:var(--ink3);border:1px solid var(--border);border-radius:var(--r);';
+      h+='color:var(--platinum);font-size:9px;font-family:Montserrat,sans-serif;padding:6px;letter-spacing:.04em">'+opts+'</select>';
+
+      h+='</div>';
     });
-    if(!res.ok){
-      const errText=await res.text();
-      throw new Error('Worker error '+res.status+': '+errText.slice(0,200));
-    }
-    const data=await res.json();
-    if(data.error) throw new Error(data.error);
+  });
 
-    const textBlocks=(data.content||[]).filter(b=>b.type==='text');
-    if(!textBlocks.length) throw new Error('No text in response');
-    const raw=textBlocks[textBlocks.length-1].text;
-    // Extract JSON object from anywhere in the response — model sometimes adds preamble
-    const jsonMatch=raw.match(/\{[\s\S]*\}/);
-    if(!jsonMatch) throw new Error('No JSON found in response');
-    const parsed=JSON.parse(jsonMatch[0]);
+  el.innerHTML=h;
 
-    S.players.forEach(p=>{
-      const d=S.draws[p]||{};
-      let total=0;
-      [d.top,d.mid,d.bot].filter(Boolean).forEach(teamName=>{
-        if(parsed.teams&&parsed.teams[teamName]){
-          const td=parsed.teams[teamName];
-          // Recalculate to ensure accuracy
-          const gs=td.goalsScored||td.goals||0;
-          const gc=td.goalsConceded||0;
-          const kb=td.knockoutBonus||0;
-          total+=(gs*1)+(gc*-0.5)+kb;
-        }
-      });
-      S.scores[p]=Math.round(total*10)/10; // round to 1dp
+  // Update last-updated label
+  const lu=document.getElementById('scores-last-updated');
+  if(lu&&S.lastUpdated) lu.textContent='Last saved: '+S.lastUpdated;
+}
+
+function saveTeamScores(){
+  if(!S.teamStatuses) S.teamStatuses={};
+  const stageLabels={0:'',3:'R16',6:'QF',9:'SF',12:'Final',15:'Champion'};
+
+  document.querySelectorAll('.score-input-scored').forEach(inp=>{
+    const name=inp.dataset.team;
+    const goalsScored=parseInt(inp.value)||0;
+    const concededEl=document.querySelector('.score-input-conceded[data-team="'+name+'"]');
+    const goalsConceded=parseInt(concededEl?concededEl.value:0)||0;
+    const stageEl=document.querySelector('.score-input-stage[data-team="'+name+'"]');
+    const bonus=parseInt(stageEl?stageEl.value:0)||0;
+    const stageLabel=stageLabels[bonus]||'';
+    const points=Math.round(((goalsScored)+(goalsConceded*-0.5)+bonus)*10)/10;
+    S.teamStatuses[name]={
+      goalsScored,goalsConceded,knockoutBonus:bonus,points,
+      status:goalsScored+'G '+goalsConceded+'GA'+(stageLabel?' · '+stageLabel:'')
+    };
+  });
+
+  // Recalculate player totals
+  S.players.forEach(p=>{
+    const d=S.draws[p]||{};
+    let total=0;
+    [d.top,d.mid,d.bot].filter(Boolean).forEach(name=>{
+      total+=(S.teamStatuses[name]&&S.teamStatuses[name].points)||0;
     });
+    S.scores[p]=Math.round(total*10)/10;
+  });
 
-    S.teamStatuses=parsed.teams||{};
-    S.lastUpdated=parsed.lastUpdated||new Date().toLocaleTimeString();
-    save();
-    statusEl.style.display='none';delete statusEl.dataset.active;
-    document.getElementById('last-updated').textContent='Updated: '+S.lastUpdated;
-    renderScoreboard();
-    toast('Scores updated');
-  }catch(err){
-    console.error('fetchLiveScores error:',err);
-    statusEl.innerHTML='<div style="font-size:9px;letter-spacing:.1em;color:var(--ruby2);margin-bottom:10px">'+err.message+' — or enter scores below.</div>'+buildManualScoreEditor();
-    statusEl.style.display='block';statusEl.dataset.active='1';
-    toast('Fetch failed — enter manually');
-  }finally{
-    btn.disabled=false;
-    btn.textContent='↻ Auto-fetch Scores';
-  }
+  S.lastUpdated='Saved '+new Date().toLocaleDateString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+  save();
+
+  // Refresh pts display inline without full re-render
+  renderScoresPage();
+
+  const lu=document.getElementById('last-updated');
+  if(lu) lu.textContent='Updated: '+S.lastUpdated;
+
+  toast('Scores saved — standings updated');
 }
 
 function buildManualScoreEditor(){
