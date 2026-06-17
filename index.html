@@ -741,7 +741,7 @@ input[type=number]{-moz-appearance:textfield!important;appearance:textfield!impo
 <!-- ═══ SCOREBOARD ═══ -->
 <div class="page" id="page-scoreboard">
   <div class="infobar">
-    <strong>Scoring:</strong> +3pt for a Win · +1pt for a Draw · 0pts for a Loss · +1pt per goal scored · -0.5pt per goal conceded · Stage bonus: R32 +3 · R16 +6 · QF +9 · SF +12 · Runner-up +15. Enter scores on the <strong>Scores</strong> tab.
+    <strong>Scoring:</strong> +1pt per goal scored · -0.5pt per goal conceded · Stage bonus: R32 +3 · R16 +6 · QF +9 · SF +12 · Runner-up +15 · Champion +15. Enter scores on the <strong>Scores</strong> tab.
   </div>
 
   <!-- Prize banners -->
@@ -948,7 +948,51 @@ const DEFAULTS=[
 ];
 
 let S=(()=>{try{const s=localStorage.getItem('wc26v5');if(s)return JSON.parse(s);}catch(e){}return{players:[],teams:JSON.parse(JSON.stringify(DEFAULTS)),draws:{},scores:{},entryFee:5,matchResults:{},teamStatuses:{}};})();
-const save=()=>localStorage.setItem('wc26v5',JSON.stringify(S));
+
+// ── SHARED STORAGE ──
+// Local storage keeps the app quick on this device. Cloudflare keeps everyone in sync.
+const saveLocal=()=>localStorage.setItem('wc26v5',JSON.stringify(S));
+
+async function save(){
+  saveLocal();
+  if(!WORKER_URL) return;
+  try{
+    await fetch(WORKER_URL+'/state',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(S),
+    });
+  }catch(e){
+    console.warn('Cloud save failed; local copy saved only',e);
+  }
+}
+
+async function loadSharedState(){
+  if(!WORKER_URL) return false;
+  try{
+    const res=await fetch(WORKER_URL+'/state',{cache:'no-store'});
+    if(!res.ok) throw new Error('Shared state not available');
+    const shared=await res.json();
+    if(!shared||!Array.isArray(shared.players)||!shared.draws) return false;
+
+    S={
+      players:shared.players||[],
+      teams:shared.teams&&Array.isArray(shared.teams)?shared.teams:JSON.parse(JSON.stringify(DEFAULTS)),
+      draws:shared.draws||{},
+      scores:shared.scores||{},
+      entryFee:shared.entryFee||5,
+      matchResults:shared.matchResults||{},
+      teamStatuses:shared.teamStatuses||{},
+      lastUpdated:shared.lastUpdated||null,
+    };
+    saveLocal();
+    return true;
+  }catch(e){
+    console.warn('Cloud load failed; using this browser’s local copy',e);
+    return false;
+  }
+}
+
 const drawnSet=()=>{const s=new Set();Object.values(S.draws).forEach(d=>{if(d.top)s.add(d.top);if(d.mid)s.add(d.mid);if(d.bot)s.add(d.bot);});return s;};
 const avail=h=>S.teams.filter(t=>t.half===h&&!drawnSet().has(t.name));
 
@@ -1861,8 +1905,9 @@ function importDrawCode(){
       draws:payload.draws,
       scores,
       entryFee:payload.fee||5,
-      teamStatuses:{},
-      lastUpdated:null,
+      matchResults:payload.matchResults||{},
+      teamStatuses:payload.teamStatuses||{},
+      lastUpdated:payload.lastUpdated||null,
     };
     save();
     renderSetup();
@@ -1927,7 +1972,7 @@ function confetti(){
 // ── MODAL / TOAST ──
 function openModal(){document.getElementById('modal').classList.add('open');}
 function closeModal(){document.getElementById('modal').classList.remove('open');}
-function confirmReset(){S={players:[],teams:JSON.parse(JSON.stringify(DEFAULTS)),draws:{},scores:{}};localStorage.removeItem('wc26v3');localStorage.removeItem('wc26v4');save();closeModal();renderSetup();toast('Reset complete');}
+function confirmReset(){S={players:[],teams:JSON.parse(JSON.stringify(DEFAULTS)),draws:{},scores:{},entryFee:5,matchResults:{},teamStatuses:{},lastUpdated:null};localStorage.removeItem('wc26v3');localStorage.removeItem('wc26v4');save();closeModal();renderSetup();toast('Reset complete');}
 function toast(msg,dur=2600){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),dur);}
 
 // ── AUTO-LOAD FROM URL HASH ──
@@ -1956,9 +2001,18 @@ function loadFromUrlHash(){
   }
 }
 
-loadFromUrlHash();
-renderSetup();
-checkForUpdates();
+async function initApp(){
+  const loadedFromHash=loadFromUrlHash();
+  if(loadedFromHash){
+    await save(); // publish imported/share-code state to Cloudflare too
+  }else{
+    await loadSharedState();
+  }
+  renderSetup();
+  checkForUpdates();
+}
+
+initApp();
 
 
 function showManualEntry(){
@@ -1970,4 +2024,4 @@ function showManualEntry(){
 }
 </script>
 </body>
-</html
+</html>
