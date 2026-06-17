@@ -444,6 +444,21 @@ nav{display:flex;justify-content:center;margin-bottom:48px;padding:0 24px}
 .score-pts{font-family:'Cormorant Garamond',serif;font-size:2rem;font-weight:300;color:var(--gold);flex-shrink:0;text-align:right}
 .score-pts small{display:block;font-size:8px;letter-spacing:.2em;text-transform:uppercase;color:var(--silver2);font-family:'Montserrat',sans-serif;font-weight:400}
 
+/* ── EXPANDABLE LEADERBOARD BREAKDOWN ── */
+.score-card{align-items:flex-start}
+.score-toggle{background:none;border:none;color:var(--platinum);cursor:pointer;font-family:'Montserrat',sans-serif;font-size:11px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;padding:0;margin:0 0 8px;text-align:left}
+.score-toggle:hover{color:var(--gold2)}
+.score-pills.score-breakdown-grid{display:none;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:12px}
+.score-card.open .score-pills.score-breakdown-grid{display:grid}
+.team-breakdown{min-width:0;background:var(--ink3);border:1px solid var(--border);border-radius:var(--r);padding:12px}
+.team-breakdown .pill{display:block;text-align:center;margin-bottom:10px;white-space:normal;line-height:1.25}
+.stat-line{display:flex;justify-content:space-between;gap:10px;font-size:9px;letter-spacing:.08em;color:var(--silver);padding:4px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.stat-line:last-child{border-bottom:none}.stat-line strong{font-weight:500;color:var(--platinum)}
+.stat-total{margin-top:6px;padding-top:8px;border-top:1px solid var(--border);color:var(--gold)}
+.stat-pos{color:var(--emerald2)!important}.stat-neg{color:var(--ruby2)!important}.stat-bonus{color:var(--gold2)!important}
+@media(max-width:700px){.score-pills.score-breakdown-grid{grid-template-columns:1fr}.score-card{gap:12px}.score-rank{width:28px}.score-pts{font-size:1.6rem}}
+
+
 /* ── TOAST ── */
 .toast{position:fixed;bottom:32px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--ink3);border:1px solid var(--gold);border-radius:var(--r);padding:10px 22px;font-size:9px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--gold2);z-index:200;transition:transform .3s cubic-bezier(.16,1,.3,1);white-space:nowrap}
 .toast.show{transform:translateX(-50%) translateY(0)}
@@ -753,7 +768,7 @@ input[type=number]{-moz-appearance:textfield!important;appearance:textfield!impo
 <div id="toast" class="toast"></div>
 
 <script>
-const APP_VERSION=1;
+const APP_VERSION=2;
 // ↓ Replace this with your Cloudflare Worker URL after deploying
 const WORKER_URL='https://sweep.wmpmck.workers.dev'; // Bump this number each time you update and re-upload
 
@@ -1383,7 +1398,41 @@ function renderScoreboard(){
   const statusEl=document.getElementById('fetch-status');if(statusEl&&!statusEl.dataset.active){statusEl.style.display='none';}
   const el=document.getElementById('score-list');el.innerHTML='';
   if(!S.players.length){el.innerHTML='<div style="color:var(--silver2);font-size:10px;letter-spacing:.1em">Add participants in Setup.</div>';return;}
+
+  const statuses=S.teamStatuses||{};
+  const fmt=n=>Number.isInteger(Number(n))?String(Number(n)):Number(n||0).toFixed(1);
+  const signed=n=>Number(n)>0?'+'+fmt(n):fmt(n);
+
   const ranked=[...S.players].map(p=>({p,sc:S.scores[p]||0,d:S.draws[p]||{}})).sort((a,b)=>b.sc-a.sc);
+
+  const teamBlock=(team,cls)=>{
+    if(!team){
+      const label=cls==='top'?'Elite':cls==='mid'?'Contender':'Underdog';
+      return '<div class="team-breakdown"><span class="pill tbd">'+label+' TBD</span></div>';
+    }
+    const td=statuses[team.name]||{};
+    const wins=td.wins||0;
+    const draws=td.draws||0;
+    const losses=td.losses||0;
+    const winPts=td.winPts??(wins*3);
+    const drawPts=td.drawPts??draws;
+    const goalPts=td.goalPts??td.goalsScored??0;
+    const concededPts=td.concededPts??((td.goalsConceded||0)*-0.5);
+    const koPts=td.knockoutBonus||0;
+    const total=td.points||0;
+
+    return `
+      <div class="team-breakdown">
+        <span class="pill ${cls}">${team.flag} ${team.name} · ${wins}W ${draws}D ${losses}L</span>
+        <div class="stat-line"><span>Wins</span><strong>${fmt(winPts)} pts</strong></div>
+        <div class="stat-line"><span>Draws</span><strong>${fmt(drawPts)} pts</strong></div>
+        <div class="stat-line"><span>Goals scored</span><strong class="stat-pos">${signed(goalPts)} pts</strong></div>
+        <div class="stat-line"><span>Goals conceded</span><strong class="stat-neg">${signed(concededPts)} pts</strong></div>
+        <div class="stat-line"><span>Stage bonus</span><strong class="stat-bonus">${fmt(koPts)} pts</strong></div>
+        <div class="stat-line stat-total"><span>Total</span><strong>${fmt(total)} pts</strong></div>
+      </div>`;
+  };
+
   ranked.forEach(({p,sc,d},i)=>{
     const tt=d.top?S.teams.find(t=>t.name===d.top):null;
     const mt=d.mid?S.teams.find(t=>t.name===d.mid):null;
@@ -1391,39 +1440,17 @@ function renderScoreboard(){
     const card=document.createElement('div');
     card.className='score-card'+(i===0?' gold-rank':'');
     const rl=i===0?'I':i===1?'II':i===2?'III':`${i+1}`;
-    const statuses=S.teamStatuses||{};
-    const teamLine = (team, cls) => {
-      if (!team) {
-        return `<span class="pill tbd">${cls === 'top' ? 'Elite' : cls === 'mid' ? 'Contender' : 'Underdog'} TBD</span>`;
-      }
-    
-      const td = statuses[team.name];
-      const goalsScored = td?.goalsScored ?? 0;
-      const goalsConceded = td?.goalsConceded ?? 0;
-      const koBonus = td?.knockoutBonus ?? 0;
-      const points = td?.points ?? 0;
-    
-      const breakdown = td
-        ? `${goalsScored}G - ${goalsConceded}GA + ${koBonus}KO = ${points}pts`
-        : '';
-    
-      const stSpan = td?.status ? ` · ${td.status}` : '';
-    
-      return `<span class="pill ${cls}" title="${breakdown}">
-        ${team.flag} ${team.name}${stSpan}
-      </span>`;
-    };
     card.innerHTML=`
       <div class="score-rank ${i===0?'first':i===1?'second':i===2?'third':''}">${rl}</div>
       <div class="score-info">
-        <div class="score-name">${p}</div>
-        <div class="score-pills">
-          ${teamLine(tt,'top')}
-          ${teamLine(mt,'mid')}
-          ${teamLine(bt,'bot')}
+        <button class="score-toggle" onclick="this.closest('.score-card').classList.toggle('open')">${p}</button>
+        <div class="score-pills score-breakdown-grid">
+          ${teamBlock(tt,'top')}
+          ${teamBlock(mt,'mid')}
+          ${teamBlock(bt,'bot')}
         </div>
       </div>
-      <div class="score-pts">${Number.isInteger(sc)?sc:sc.toFixed(1)}<small>pts</small></div>`;
+      <div class="score-pts">${fmt(sc)}<small>pts</small></div>`;
     el.appendChild(card);
   });
 }
@@ -1562,7 +1589,7 @@ function saveMatchScores(){
 
   // Initialise all drawn teams
   drawnTeamNames.forEach(name=>{
-    teamStats[name]={goalsScored:0,goalsConceded:0,matchPts:0,stage:0};
+    teamStats[name]={goalsScored:0,goalsConceded:0,wins:0,draws:0,losses:0,matchPts:0,stage:0};
   });
 
   // Process each match result
@@ -1576,15 +1603,16 @@ function saveMatchScores(){
     if(teamStats[match.home]!==undefined){
       teamStats[match.home].goalsScored+=hs;
       teamStats[match.home].goalsConceded+=as;
-      if(hs>as) teamStats[match.home].matchPts+=3;      // win
-      else if(hs===as) teamStats[match.home].matchPts+=1; // draw
-      // loss = 0
+      if(hs>as){teamStats[match.home].wins++;teamStats[match.home].matchPts+=3;}
+      else if(hs===as){teamStats[match.home].draws++;teamStats[match.home].matchPts+=1;}
+      else{teamStats[match.home].losses++;}
     }
     if(teamStats[match.away]!==undefined){
       teamStats[match.away].goalsScored+=as;
       teamStats[match.away].goalsConceded+=hs;
-      if(as>hs) teamStats[match.away].matchPts+=3;      // win
-      else if(as===hs) teamStats[match.away].matchPts+=1; // draw
+      if(as>hs){teamStats[match.away].wins++;teamStats[match.away].matchPts+=3;}
+      else if(as===hs){teamStats[match.away].draws++;teamStats[match.away].matchPts+=1;}
+      else{teamStats[match.away].losses++;}
     }
   });
 
@@ -1593,13 +1621,32 @@ function saveMatchScores(){
   drawnTeamNames.forEach(name=>{
     const existing=S.teamStatuses[name]||{};
     const kb=existing.knockoutBonus||0;
-    const gs=teamStats[name]?teamStats[name].goalsScored:0;
-    const gc=teamStats[name]?teamStats[name].goalsConceded:0;
-    const mp=teamStats[name]?teamStats[name].matchPts:0;
-    const points=Math.round(((gs)+(gc*-0.5)+mp+kb)*10)/10;
+    const stats=teamStats[name]||{};
+    const gs=stats.goalsScored||0;
+    const gc=stats.goalsConceded||0;
+    const wins=stats.wins||0;
+    const draws=stats.draws||0;
+    const losses=stats.losses||0;
+    const winPts=wins*3;
+    const drawPts=draws;
+    const goalPts=gs;
+    const concededPts=gc*-0.5;
+    const mp=winPts+drawPts;
+    const points=Math.round((goalPts+concededPts+mp+kb)*10)/10;
     S.teamStatuses[name]={
-      goalsScored:gs,goalsConceded:gc,matchPts:mp,knockoutBonus:kb,points,
-      status:gs+'G '+gc+'GA '+mp+'pts'+(kb?' · '+{3:'R16',6:'QF',9:'SF',12:'Final',15:'Champion'}[kb]:' · Groups')
+      goalsScored:gs,
+      goalsConceded:gc,
+      wins,
+      draws,
+      losses,
+      winPts,
+      drawPts,
+      goalPts,
+      concededPts,
+      matchPts:mp,
+      knockoutBonus:kb,
+      points,
+      status:`${wins}W ${draws}D ${losses}L`
     };
   });
 
@@ -1678,7 +1725,7 @@ function applyManualScores(){
     const bonus=parseInt(stageEl?stageEl.value:0)||0;
     const stageLabel=stageLabels[bonus]||'';
     const points=Math.round(((goalsScored*1)+(goalsConceded*-0.5)+bonus)*10)/10;
-    S.teamStatuses[name]={goalsScored,goalsConceded,knockoutBonus:bonus,points,status:goalsScored+'G '+goalsConceded+'GA'+(stageLabel?' · '+stageLabel:'')};
+    S.teamStatuses[name]={goalsScored,goalsConceded,wins:0,draws:0,losses:0,winPts:0,drawPts:0,goalPts:goalsScored,concededPts:goalsConceded*-0.5,knockoutBonus:bonus,points,status:goalsScored+'G '+goalsConceded+'GA'+(stageLabel?' · '+stageLabel:'')};
   });
   S.players.forEach(p=>{
     const d=S.draws[p]||{};
