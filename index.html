@@ -255,6 +255,10 @@ nav{display:flex;justify-content:center;margin-bottom:48px;padding:0 24px}
   gap:0;
   flex-shrink:0;
   padding:0 6px;
+  border-bottom:1px solid rgba(201,168,76,0.15);
+}
+.reel-item:last-child {
+  border-bottom:none;
 }
 .reel-item-flag{font-size:1.3rem;line-height:1;margin-bottom:1px}
 .reel-item-name{
@@ -733,7 +737,9 @@ nav{display:flex;justify-content:center;margin-bottom:48px;padding:0 24px}
 <div id="toast" class="toast"></div>
 
 <script>
-const APP_VERSION=1; // Bump this number each time you update and re-upload
+const APP_VERSION=1;
+// ↓ Replace this with your Cloudflare Worker URL after deploying
+const WORKER_URL='https://sweep.wmpmck.workers.dev'; // Bump this number each time you update and re-upload
 
 // ── DATA ──
 // All 48 confirmed 2026 World Cup teams across three tiers (seeds 1–16 top, 17–32 mid, 33–48 bot)
@@ -979,7 +985,7 @@ function pullLever(){
 
 function spinSequence(player,botTeam,midTeam,topTeam){
   // REEL 0: participants
-  const reel0Pool=S.players.map(p=>({name:p,flag:''}));
+  const reel0Pool=S.players.filter(p=>{const d=S.draws[p]||{};return !d.top||!d.mid||!d.bot;}).map(p=>({name:p,flag:''}));
   const r0Idx=reel0Pool.findIndex(p=>p.name===player);
   spinReel(0,reel0Pool,r0Idx,'',4500,'cubic-bezier(.2,.8,.3,1)',()=>{
     setStatus(0,player,'locked');
@@ -1332,10 +1338,18 @@ async function fetchLiveScores(){
     + teamList + '\n\n'
     + scoringRules;
 
+  // Check Worker URL has been configured
+  if(WORKER_URL.includes('YOUR-WORKER')){
+    statusEl.innerHTML='<div style="font-size:9px;letter-spacing:.1em;color:var(--ruby2);margin-bottom:10px">Worker URL not configured yet — enter scores manually for now.</div>'+buildManualScoreEditor();
+    statusEl.style.display='block';statusEl.dataset.active='1';
+    btn.disabled=false;btn.textContent='↻ Auto-fetch Scores';
+    return;
+  }
+
   try{
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
+    const res=await fetch(WORKER_URL,{
       method:'POST',
-      headers:{'Content-Type':'application/json','anthropic-dangerous-direct-browser-calls':'true'},
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
         model:'claude-sonnet-4-6',
         max_tokens:1500,
@@ -1345,18 +1359,17 @@ async function fetchLiveScores(){
     });
     if(!res.ok){
       const errText=await res.text();
-      throw new Error('API error '+res.status+': '+errText.slice(0,200));
+      throw new Error('Worker error '+res.status+': '+errText.slice(0,200));
     }
     const data=await res.json();
+    if(data.error) throw new Error(data.error);
 
-    // Extract the final text block (after tool use)
     const textBlocks=(data.content||[]).filter(b=>b.type==='text');
     if(!textBlocks.length) throw new Error('No text in response');
     const raw=textBlocks[textBlocks.length-1].text;
     const clean=raw.split('```json').join('').split('```').join('').trim();
     const parsed=JSON.parse(clean);
 
-    // Apply scores
     S.players.forEach(p=>{
       const d=S.draws[p]||{};
       let total=0;
@@ -1377,13 +1390,12 @@ async function fetchLiveScores(){
     toast('Scores updated');
   }catch(err){
     console.error('fetchLiveScores error:',err);
-    // Show manual entry fallback
-    statusEl.innerHTML='<div style="font-size:9px;letter-spacing:.1em;color:var(--ruby2);margin-bottom:10px">Auto-fetch requires a hosted environment. Enter scores manually below.</div>'+buildManualScoreEditor();
-    statusEl.style.display='block';
-    toast('Use manual entry below');
+    statusEl.innerHTML='<div style="font-size:9px;letter-spacing:.1em;color:var(--ruby2);margin-bottom:10px">'+err.message+' — or enter scores below.</div>'+buildManualScoreEditor();
+    statusEl.style.display='block';statusEl.dataset.active='1';
+    toast('Fetch failed — enter manually');
   }finally{
     btn.disabled=false;
-    btn.textContent='↻ Refresh Scores';
+    btn.textContent='↻ Auto-fetch Scores';
   }
 }
 
@@ -1645,6 +1657,7 @@ function loadFromUrlHash(){
 loadFromUrlHash();
 renderSetup();
 checkForUpdates();
+
 
 function showManualEntry(){
   const statusEl=document.getElementById('fetch-status');
