@@ -1392,13 +1392,26 @@ function renderScoreboard(){
     card.className='score-card'+(i===0?' gold-rank':'');
     const rl=i===0?'I':i===1?'II':i===2?'III':`${i+1}`;
     const statuses=S.teamStatuses||{};
-    const teamLine=(team,cls)=>{
-      if(!team) return `<span class="pill tbd">${cls==='top'?'Elite':cls==='mid'?'Contender':'Underdog'} TBD</span>`;
-      const td=statuses[team.name];
-      const pts=td?td.points:null;
-      const breakdown=td?`${td.goals||0}G + ${td.knockoutBonus||0}KO = ${td.points||0}pts`:'';
-      const st=td?.status||'';
-      return '<span class="pill '+cls+'" title="'+breakdown+'">'+team.flag+' '+team.name+stSpan+'</span>';
+    const teamLine = (team, cls) => {
+      if (!team) {
+        return `<span class="pill tbd">${cls === 'top' ? 'Elite' : cls === 'mid' ? 'Contender' : 'Underdog'} TBD</span>`;
+      }
+    
+      const td = statuses[team.name];
+      const goalsScored = td?.goalsScored ?? 0;
+      const goalsConceded = td?.goalsConceded ?? 0;
+      const koBonus = td?.knockoutBonus ?? 0;
+      const points = td?.points ?? 0;
+    
+      const breakdown = td
+        ? `${goalsScored}G - ${goalsConceded}GA + ${koBonus}KO = ${points}pts`
+        : '';
+    
+      const stSpan = td?.status ? ` · ${td.status}` : '';
+    
+      return `<span class="pill ${cls}" title="${breakdown}">
+        ${team.flag} ${team.name}${stSpan}
+      </span>`;
     };
     card.innerHTML=`
       <div class="score-rank ${i===0?'first':i===1?'second':i===2?'third':''}">${rl}</div>
