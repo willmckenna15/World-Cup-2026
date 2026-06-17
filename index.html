@@ -741,7 +741,7 @@ input[type=number]{-moz-appearance:textfield!important;appearance:textfield!impo
 <!-- ═══ SCOREBOARD ═══ -->
 <div class="page" id="page-scoreboard">
   <div class="infobar">
-    <strong>Scoring:</strong> +1pt per goal scored · -0.5pt per goal conceded · Stage bonus: R16 +3 · QF +6 · SF +9 · Runner-up +12 · Champion +15. Enter scores on the <strong>Scores</strong> tab.
+    <strong>Scoring:</strong> +3pt for a Win · +1pt for a Draw · 0pts for a Loss · +1pt per goal scored · -0.5pt per goal conceded · Stage bonus: R32 +3 · R16 +6 · QF +9 · SF +12 · Runner-up +15. Enter scores on the <strong>Scores</strong> tab.
   </div>
 
   <!-- Prize banners -->
@@ -1699,10 +1699,11 @@ function buildManualScoreEditor(){
   if(!allTeams.length) return '<div style="font-size:10px;color:var(--silver2)">Complete the draw first to see teams here.</div>';
   const stageOpts=[
     {v:0,l:'Groups (exit)'},
-    {v:3,l:'Round of 16'},
-    {v:6,l:'Quarter-final'},
-    {v:9,l:'Semi-final'},
-    {v:12,l:'Final (runner-up)'},
+    {v:3,l:'Round of 32'},
+    {v:6,l:'Round of 16'},
+    {v:9,l:'Quarter-final'},
+    {v:12,l:'Semi-final'},
+    {v:15,l:'Runner-up'},
     {v:15,l:'Champion'},
   ];
   let h='<div style="background:var(--ink3);border:1px solid var(--border2);border-radius:var(--r2);padding:20px;margin-top:8px">';
@@ -1741,7 +1742,7 @@ function buildManualScoreEditor(){
 
 function applyManualScores(){
   if(!S.teamStatuses) S.teamStatuses={};
-  const stageLabels={0:'',3:'R16',6:'QF',9:'SF',12:'Final',15:'Champion'};
+  const stageLabels={0:'',3:'R32',6:'R16',9:'QF',12:'SF',15:'Runner-up/Champion'};
   document.querySelectorAll('.manual-goals').forEach(inp=>{
     const name=inp.dataset.team;
     const goalsScored=parseInt(inp.value)||0;
@@ -1825,7 +1826,7 @@ Open the app and enter this code to see everyone's teams and track live scores:
 
 ${code}
 
-Scoring: +1pt per goal · R16 +3 · QF +6 · SF +9 · Final +12 · Champion +15
+Scoring: +1pt per goal · R32 +3 · R16 +6 · QF +9 · SF +12 · Runner-up +15 · Champion +15
 💰 Champion prize: ${fmt(champion)} · Top points: ${fmt(points)}`;
   navigator.clipboard.writeText(msg).then(()=>toast('WhatsApp message copied!')).catch(()=>toast('Copy failed'));
 }
@@ -1969,4 +1970,4 @@ function showManualEntry(){
 }
 </script>
 </body>
-</html>
+</html
