@@ -435,7 +435,7 @@ input[type=number]{-moz-appearance:textfield!important;appearance:textfield!impo
 <div id="toast" class="toast"></div>
 
 <script>
-const APP_VERSION = 7;
+const APP_VERSION = 9;
 const WORKER_URL = 'https://sweep.wmpmck.workers.dev';
 const RESET_PIN = '7908';
 
@@ -579,8 +579,10 @@ let S=(()=>{try{const s=localStorage.getItem('wc26v5');if(s)return JSON.parse(s)
     // yourself as FIFA locks in the remaining third-place pairings.
     73:{home:'South Africa',away:'Canada'},
     74:{home:'Brazil',away:'Japan'},
+    75:{home:'Germany',away:'Paraguay'},
     76:{home:'Netherlands',away:'Morocco'},
     77:{home:'Ivory Coast',away:'Norway'},
+    78:{home:'France',away:'Sweden'},
     82:{home:'United States',away:'Bosnia & Herz.'},
   }};
 })();
@@ -1064,14 +1066,25 @@ function getResolvedMatches(){
     bestThirds=computeBestThirdPlace(tables,letters).slice(0,8).map(t=>t.name);
   }
 
-  // Round of 32: NOT auto-resolved. FIFA uses an official 495-combination
-  // lookup table (Annex C) to pair qualifying third-place teams with specific
-  // bracket slots, which isn't reproducible here — so R32 teams are entered
-  // manually once FIFA confirms them (see S.manualR32 overrides below).
-  // Group winners/runners-up are shown as a convenience hint only; the actual
-  // matchup names come from your manual entry.
+  // Round of 32: auto-resolve whatever we safely can.
+  // Slots built ONLY from group winners/runners-up (no "Best 3rd" involved)
+  // are fully determined by group tables alone, so those fill in automatically.
+  // Slots involving a "Best 3rd" team depend on FIFA's official 495-combination
+  // lookup table (Annex C), which isn't reproducible here — those stay as
+  // manual entry (see S.manualR32 overrides), with manual entry also able to
+  // override the auto-filled slots if you want to correct anything.
   resolved.forEach(m=>{
     if(m.stage!=='Round of 32')return;
+    [['resolvedHome','home'],['resolvedAway','away']].forEach(([rkey,okey])=>{
+      const val=m[okey];
+      const mWin=val.match(/^1st Group ([A-L])$/);
+      const mRun=val.match(/^2nd Group ([A-L])$/);
+      if(mWin&&winnerOf[mWin[1]])m[rkey]=winnerOf[mWin[1]];
+      else if(mRun&&runnerUpOf[mRun[1]])m[rkey]=runnerUpOf[mRun[1]];
+      // "Best 3rd" deliberately left unresolved here — needs manual entry below
+    });
+    // Manual entry always takes priority (lets you confirm "Best 3rd" slots,
+    // or override an auto-filled name if something looks wrong)
     const manual=S.manualR32&&S.manualR32[m.id];
     if(manual){
       if(manual.home)m.resolvedHome=manual.home;
@@ -1367,30 +1380,46 @@ function renderScoresPage(){
         const homeFW=homeDrawn?'font-weight:500':'font-weight:300';
         const awayFW=awayDrawn?'font-weight:500':'font-weight:300';
 
-        if(isR32){
-          // Round of 32: confirm teams manually (FIFA's third-place pairing
-          // table isn't reproduced here). Two text fields let you type the
-          // confirmed names once announced; original placeholder shown as a hint.
+        const stillNeedsManual=isR32&&(isPlaceholder(homeName)||isPlaceholder(awayName));
+
+        if(stillNeedsManual){
+          // This R32 slot still has at least one "Best 3rd" placeholder that
+          // can't be auto-resolved (FIFA's third-place pairing table isn't
+          // reproduced here). Text fields let you type the confirmed name
+          // once FIFA announces it; the other side may already be auto-filled.
           const manual=S.manualR32&&S.manualR32[match.id]||{home:'',away:''};
           const teamInputStyle='width:100%;background:var(--ink3);border:1px solid var(--border2);border-radius:2px;color:var(--gold2);font-size:.85rem;font-family:Cormorant Garamond,serif;font-style:italic;padding:5px 8px;';
+          const homeReadonly=!isPlaceholder(homeName); // already auto-resolved
+          const awayReadonly=!isPlaceholder(awayName);
           h+='<div style="background:'+(relevant?'var(--ink3)':'var(--ink2)')+';border:1px solid var(--border);'+(relevant?'border-color:rgba(201,168,76,.4)':'')+';border-radius:var(--r);padding:10px 12px;margin-bottom:5px">';
           h+='<div style="display:grid;grid-template-columns:52px minmax(0,1fr) 40px 14px 40px minmax(0,1fr);gap:8px;align-items:center">';
           h+='<span style="font-size:8px;color:var(--silver2);letter-spacing:.04em;white-space:nowrap">'+timeStr+'</span>';
-          h+='<input type="text" placeholder="'+match.home+'" value="'+manual.home+'" style="'+teamInputStyle+'text-align:right" data-match="'+match.id+'" data-side="home" class="r32-team-input">';
+          if(homeReadonly){
+            h+='<span style="font-family:Cormorant Garamond,serif;font-size:.95rem;font-style:italic;color:'+(homeDrawn?'var(--gold2)':'var(--platinum)')+';'+(homeDrawn?'font-weight:500':'font-weight:300')+';text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+homeName+'</span>';
+          } else {
+            h+='<input type="text" placeholder="'+match.home+'" value="'+manual.home+'" style="'+teamInputStyle+'text-align:right" data-match="'+match.id+'" data-side="home" class="r32-team-input">';
+          }
           h+='<input type="number" min="0" max="99" value="'+res.home+'" style="'+inputStyle+'" data-match="'+match.id+'" data-side="home" class="match-score-input">';
           h+='<span style="font-size:9px;color:var(--silver2);text-align:center;font-family:Cormorant Garamond,serif">&#8211;</span>';
           h+='<input type="number" min="0" max="99" value="'+res.away+'" style="'+inputStyle+'" data-match="'+match.id+'" data-side="away" class="match-score-input">';
-          h+='<input type="text" placeholder="'+match.away+'" value="'+manual.away+'" style="'+teamInputStyle+'" data-match="'+match.id+'" data-side="away" class="r32-team-input">';
+          if(awayReadonly){
+            h+='<span style="font-family:Cormorant Garamond,serif;font-size:.95rem;font-style:italic;color:'+(awayDrawn?'var(--gold2)':'var(--platinum)')+';'+(awayDrawn?'font-weight:500':'font-weight:300')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+awayName+'</span>';
+          } else {
+            h+='<input type="text" placeholder="'+match.away+'" value="'+manual.away+'" style="'+teamInputStyle+'" data-match="'+match.id+'" data-side="away" class="r32-team-input">';
+          }
           h+='</div>';
-          h+='<div style="font-size:7px;color:var(--silver2);letter-spacing:.08em;margin-top:6px;padding-left:60px">Type confirmed team name once announced — placeholder shows the official slot ('+match.home+' / '+match.away+')</div>';
+          const hintParts=[];
+          if(!homeReadonly)hintParts.push(match.home);
+          if(!awayReadonly)hintParts.push(match.away);
+          h+='<div style="font-size:7px;color:var(--silver2);letter-spacing:.08em;margin-top:6px;padding-left:60px">Type the confirmed team once announced — placeholder: '+hintParts.join(' / ')+'</div>';
           // Penalty selector for R32 if both teams confirmed and scores level
-          if(manual.home&&manual.away&&res.home!==''&&res.away!==''&&!isNaN(parseInt(res.home))&&!isNaN(parseInt(res.away))&&parseInt(res.home)===parseInt(res.away)){
+          if(homeName&&awayName&&!isPlaceholder(homeName)&&!isPlaceholder(awayName)&&res.home!==''&&res.away!==''&&!isNaN(parseInt(res.home))&&!isNaN(parseInt(res.away))&&parseInt(res.home)===parseInt(res.away)){
             const curPen=S.penaltyWinners[match.id]||'';
             h+='<div style="display:flex;align-items:center;gap:8px;margin-top:6px;padding-left:60px;font-size:8px;letter-spacing:.1em;color:var(--silver2)">Won on penalties: ';
             h+='<select class="penalty-winner-select" data-match="'+match.id+'" style="background:var(--ink2);border:1px solid var(--border2);border-radius:2px;color:var(--gold2);font-size:9px;padding:3px 8px;font-family:Montserrat,sans-serif">';
             h+='<option value="">— select —</option>';
-            h+='<option value="'+manual.home+'" '+(curPen===manual.home?'selected':'')+'>'+manual.home+'</option>';
-            h+='<option value="'+manual.away+'" '+(curPen===manual.away?'selected':'')+'>'+manual.away+'</option>';
+            h+='<option value="'+homeName+'" '+(curPen===homeName?'selected':'')+'>'+homeName+'</option>';
+            h+='<option value="'+awayName+'" '+(curPen===awayName?'selected':'')+'>'+awayName+'</option>';
             h+='</select></div>';
           }
           h+='</div>';
