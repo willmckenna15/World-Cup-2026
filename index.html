@@ -186,6 +186,44 @@ nav{display:flex;justify-content:center;margin-bottom:48px;padding:0 24px}
 input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none!important;display:none!important}
 input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none!important;display:none!important}
 input[type=number]{-moz-appearance:textfield!important;appearance:textfield!important}
+
+/* ── BRACKET TREE ── */
+.bracket-scroll{overflow-x:auto;padding-bottom:16px;-webkit-overflow-scrolling:touch}
+.bracket-rounds{display:flex;gap:28px;min-width:max-content;padding:8px 4px 8px}
+.bracket-round{display:flex;flex-direction:column;justify-content:space-around;min-width:148px}
+.bracket-round-label{font-size:7px;font-weight:600;letter-spacing:.3em;text-transform:uppercase;color:var(--gold);text-align:center;margin-bottom:14px;white-space:nowrap}
+.bracket-matches{display:flex;flex-direction:column;justify-content:space-around;flex:1;gap:10px}
+.bracket-match{position:relative;display:flex;flex-direction:column}
+.bracket-team{
+  font-family:'Cormorant Garamond',serif;font-style:italic;font-size:.74rem;
+  padding:5px 8px;background:var(--ink2);border:1px solid var(--border);
+  color:var(--silver2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  border-radius:2px 2px 0 0;
+}
+.bracket-team:last-child{border-radius:0 0 2px 2px;border-top:none}
+.bracket-team.known{color:var(--platinum);font-weight:400}
+.bracket-team.drawn{color:var(--gold2);font-weight:600;background:var(--ink3);border-color:rgba(201,168,76,.35)}
+.bracket-team.winner{color:var(--emerald2)!important;font-weight:600}
+.bracket-team.winner.drawn{color:var(--gold2)!important}
+.bracket-match-meta{font-size:6px;letter-spacing:.15em;text-transform:uppercase;color:var(--silver2);text-align:center;margin-top:3px;white-space:nowrap}
+/* connector lines between rounds */
+.bracket-round:not(:last-child) .bracket-match::after{
+  content:'';position:absolute;top:50%;right:-14px;width:14px;height:1px;
+  background:rgba(201,168,76,.25);
+}
+.bracket-round:not(:first-child) .bracket-match::before{
+  content:'';position:absolute;top:50%;left:-14px;width:14px;height:1px;
+  background:rgba(201,168,76,.25);
+}
+.bracket-champion-card{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:linear-gradient(160deg,#40321e 0%,#2e2414 100%);
+  border:1px solid rgba(201,168,76,.5);border-radius:6px;padding:18px 16px;
+  min-width:140px;text-align:center;
+}
+.bracket-champion-card .trophy{font-size:1.6rem;margin-bottom:6px}
+.bracket-champion-card .champ-name{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:1rem;color:var(--gold2);font-weight:600}
+.bracket-champion-card .champ-label{font-size:7px;letter-spacing:.25em;text-transform:uppercase;color:var(--silver2);margin-top:4px}
 </style>
 </head>
 <body>
@@ -212,6 +250,7 @@ input[type=number]{-moz-appearance:textfield!important;appearance:textfield!impo
   <button class="nav-item active" onclick="switchTab('setup')">Setup</button>
   <button class="nav-item" onclick="switchTab('draw')">The Draw</button>
   <button class="nav-item" onclick="switchTab('scores')">Scores</button>
+  <button class="nav-item" onclick="switchTab('bracket')">Bracket</button>
   <button class="nav-item" onclick="switchTab('scoreboard')">Standings</button>
 </nav>
 
@@ -362,6 +401,12 @@ input[type=number]{-moz-appearance:textfield!important;appearance:textfield!impo
   <div id="scores-page-content"></div>
 </div>
 
+<!-- BRACKET -->
+<div class="page" id="page-bracket">
+  <div class="infobar">The knockout bracket, resolving automatically as results come in. Drawn teams are highlighted in gold. Scroll horizontally to see all rounds on smaller screens.</div>
+  <div id="bracket-tree-content"></div>
+</div>
+
 <!-- SCOREBOARD -->
 <div class="page" id="page-scoreboard">
   <div class="infobar"><strong>Scoring:</strong> Win +3 · Draw +1 · Loss 0 · +1pt per goal scored · -0.5pt per goal conceded · Stage bonus: R32 +3 · R16 +6 · QF +9 · SF +12 · Runner-up +15 · Champion +15.</div>
@@ -390,7 +435,7 @@ input[type=number]{-moz-appearance:textfield!important;appearance:textfield!impo
 <div id="toast" class="toast"></div>
 
 <script>
-const APP_VERSION = 3;
+const APP_VERSION = 7;
 const WORKER_URL = 'https://sweep.wmpmck.workers.dev';
 const RESET_PIN = '7908';
 
@@ -529,7 +574,15 @@ const DEFAULTS=[
 ];
 
 let S=(()=>{try{const s=localStorage.getItem('wc26v5');if(s)return JSON.parse(s);}catch(e){}
-  return{players:[],teams:JSON.parse(JSON.stringify(DEFAULTS)),draws:{},scores:{},entryFee:5,matchResults:{},teamStatuses:{},selectedPlayer:null};
+  return{players:[],teams:JSON.parse(JSON.stringify(DEFAULTS)),draws:{},scores:{},entryFee:5,matchResults:{},teamStatuses:{},selectedPlayer:null,penaltyWinners:{},manualR32:{
+    // Confirmed Round of 32 matchups as of 27 June 2026 — fill in the rest
+    // yourself as FIFA locks in the remaining third-place pairings.
+    73:{home:'South Africa',away:'Canada'},
+    74:{home:'Brazil',away:'Japan'},
+    76:{home:'Netherlands',away:'Morocco'},
+    77:{home:'Ivory Coast',away:'Norway'},
+    82:{home:'United States',away:'Bosnia & Herz.'},
+  }};
 })();
 
 const saveLocal=()=>localStorage.setItem('wc26v5',JSON.stringify(S));
@@ -557,11 +610,12 @@ const isFullyDrawn=p=>{const d=S.draws[p]||{};return !!(d.top&&d.mid&&d.bot);};
 
 // ── TABS ──
 function switchTab(tab){
-  document.querySelectorAll('.nav-item').forEach((b,i)=>b.classList.toggle('active',['setup','draw','scores','scoreboard'][i]===tab));
+  document.querySelectorAll('.nav-item').forEach((b,i)=>b.classList.toggle('active',['setup','draw','scores','bracket','scoreboard'][i]===tab));
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-'+tab).classList.add('active');
   if(tab==='draw'){renderDraw();renderPlayerSelector();}
   if(tab==='scores')renderScoresPage();
+  if(tab==='bracket')renderBracketTree();
   if(tab==='scoreboard'){renderScoreboard();updatePotDisplay();if(S.lastUpdated)document.getElementById('last-updated').textContent='Updated: '+S.lastUpdated;}
   if(tab==='setup')renderSetup();
 }
@@ -898,20 +952,398 @@ function renderScoreboard(){
   });
 }
 
+// ══════════════════════════════════════════════
+//  BRACKET RESOLUTION ENGINE
+//  Computes group standings, qualifiers, and
+//  cascades knockout winners through every round.
+// ══════════════════════════════════════════════
+
+// All 12 group letters present in the fixture list
+function getAllGroupLetters(){
+  return [...new Set(MATCHES.filter(m=>m.group).map(m=>m.group))].sort();
+}
+
+// Compute the standings table for one group letter, using only
+// completed group-stage matches. Tiebreak order: points, goal diff, goals scored.
+function computeGroupTable(letter){
+  const teamsInGroup=DEFAULTS.filter(t=>true); // placeholder, replaced below
+  const rows={};
+  // Find every team that appears in a match for this group
+  MATCHES.filter(m=>m.group===letter).forEach(m=>{
+    if(!rows[m.home])rows[m.home]={name:m.home,pld:0,w:0,d:0,l:0,gf:0,ga:0,pts:0};
+    if(!rows[m.away])rows[m.away]={name:m.away,pld:0,w:0,d:0,l:0,gf:0,ga:0,pts:0};
+  });
+  MATCHES.filter(m=>m.group===letter).forEach(m=>{
+    const res=S.matchResults&&S.matchResults[m.id];
+    if(!res||res.home===''||res.away==='')return;
+    const hs=parseInt(res.home),as=parseInt(res.away);
+    if(isNaN(hs)||isNaN(as))return;
+    const home=rows[m.home],away=rows[m.away];
+    home.pld++;away.pld++;
+    home.gf+=hs;home.ga+=as;away.gf+=as;away.ga+=hs;
+    if(hs>as){home.w++;home.pts+=3;away.l++;}
+    else if(hs===as){home.d++;away.d++;home.pts+=1;away.pts+=1;}
+    else{away.w++;away.pts+=3;home.l++;}
+  });
+  const table=Object.values(rows);
+  table.sort((a,b)=>{
+    if(b.pts!==a.pts)return b.pts-a.pts;
+    const gdA=a.gf-a.ga,gdB=b.gf-b.ga;
+    if(gdB!==gdA)return gdB-gdA;
+    if(b.gf!==a.gf)return b.gf-a.gf;
+    return a.name.localeCompare(b.name); // final fallback: alphabetical (head-to-head/fairplay not modelled)
+  });
+  return table;
+}
+
+// Has every match in this group been completed?
+function isGroupComplete(letter){
+  const groupMatches=MATCHES.filter(m=>m.group===letter);
+  return groupMatches.every(m=>{
+    const res=S.matchResults&&S.matchResults[m.id];
+    return res&&res.home!==''&&res.away!=='' &&!isNaN(parseInt(res.home))&&!isNaN(parseInt(res.away));
+  });
+}
+
+// Returns {complete:bool, tables:{letter:table}}
+function computeAllGroupTables(){
+  const letters=getAllGroupLetters();
+  const tables={};
+  letters.forEach(l=>{tables[l]=computeGroupTable(l);});
+  const allComplete=letters.every(l=>isGroupComplete(l));
+  return {complete:allComplete,tables,letters};
+}
+
+// Rank all 12 third-placed teams to find the best 8 (tiebreak: pts, GD, GF)
+function computeBestThirdPlace(tables,letters){
+  const thirds=letters.map(l=>{
+    const t=tables[l];
+    return t&&t.length>=3?{...t[2],group:l}:null;
+  }).filter(Boolean);
+  thirds.sort((a,b)=>{
+    if(b.pts!==a.pts)return b.pts-a.pts;
+    const gdA=a.gf-a.ga,gdB=b.gf-b.ga;
+    if(gdB!==gdA)return gdB-gdA;
+    if(b.gf!==a.gf)return b.gf-a.gf;
+    return a.name.localeCompare(b.name);
+  });
+  return thirds; // sorted best-to-worst; caller takes first 8
+}
+
+// Resolve every placeholder in MATCHES into real team names, given current results.
+// This mutates a parallel "resolved" array — does NOT mutate MATCHES itself.
+// NOTE on third-place slotting: FIFA uses an official 495-combination lookup
+// table (Annex C) to pair the 8 qualifying third-place teams with specific
+// Round of 32 group-winner slots. That exact table isn't reproducible here,
+// so this resolver assigns the best 8 third-place teams to the "Best 3rd"
+// slots in schedule order. Treat third-place R32 pairings as a reasonable
+// best-effort approximation — group winners/runners-up and every round from
+// R16 onward are fully accurate once results are entered.
+let _resolvedCache=null;
+let _resolvedCacheKey=null;
+
+function getResolvedMatches(){
+  const key=JSON.stringify(S.matchResults||{});
+  if(_resolvedCache&&_resolvedCacheKey===key)return _resolvedCache;
+
+  const {complete,tables,letters}=computeAllGroupTables();
+  const resolved=MATCHES.map(m=>({...m,resolvedHome:m.home,resolvedAway:m.away}));
+
+  // Build lookup maps
+  const winnerOf={},runnerUpOf={};
+  letters.forEach(l=>{
+    const t=tables[l];
+    if(t&&t.length>=2&&isGroupComplete(l)){
+      winnerOf[l]=t[0].name;
+      runnerUpOf[l]=t[1].name;
+    }
+  });
+
+  let bestThirds=[];
+  if(letters.every(l=>isGroupComplete(l))){
+    bestThirds=computeBestThirdPlace(tables,letters).slice(0,8).map(t=>t.name);
+  }
+
+  // Round of 32: NOT auto-resolved. FIFA uses an official 495-combination
+  // lookup table (Annex C) to pair qualifying third-place teams with specific
+  // bracket slots, which isn't reproducible here — so R32 teams are entered
+  // manually once FIFA confirms them (see S.manualR32 overrides below).
+  // Group winners/runners-up are shown as a convenience hint only; the actual
+  // matchup names come from your manual entry.
+  resolved.forEach(m=>{
+    if(m.stage!=='Round of 32')return;
+    const manual=S.manualR32&&S.manualR32[m.id];
+    if(manual){
+      if(manual.home)m.resolvedHome=manual.home;
+      if(manual.away)m.resolvedAway=manual.away;
+    }
+  });
+
+  // Pass 2: resolve "W M##" placeholders by walking rounds in order,
+  // looking up the winner of the referenced match (using already-resolved names)
+  const byId={};
+  resolved.forEach(m=>{byId[m.id]=m;});
+
+  function winnerOfMatch(matchId){
+    const m=byId[matchId];
+    if(!m)return null;
+    const res=S.matchResults&&S.matchResults[matchId];
+    if(!res||res.home===''||res.away==='')return null;
+    const hs=parseInt(res.home),as=parseInt(res.away);
+    if(isNaN(hs)||isNaN(as))return null;
+    // Knockout matches cannot draw — if scores are level, no winner is recorded
+    // (use penalty result stored separately if needed; for now treat draws as undetermined)
+    if(hs>as)return m.resolvedHome;
+    if(as>hs)return m.resolvedAway;
+    // Level score with no shootout info — check for a stored penalty winner
+    const pen=S.penaltyWinners&&S.penaltyWinners[matchId];
+    return pen||null;
+  }
+  function loserOfMatch(matchId){
+    const m=byId[matchId];
+    if(!m)return null;
+    const w=winnerOfMatch(matchId);
+    if(!w)return null;
+    return w===m.resolvedHome?m.resolvedAway:m.resolvedHome;
+  }
+
+  // Resolve rounds in dependency order: R32 already resolved above (group-based),
+  // so now resolve R16, QF, SF, Final/3rd-place by following "W M##"/"Loser SF#" refs.
+  const orderedStages=['Round of 16','Quarter-final','Semi-final','3rd Place','Final'];
+  orderedStages.forEach(stageName=>{
+    resolved.filter(m=>m.stage===stageName).forEach(m=>{
+      [['resolvedHome','home'],['resolvedAway','away']].forEach(([rkey,okey])=>{
+        const val=m[okey];
+        const wMatch=val.match(/^W M(\d+)$/);
+        const loserSF=val.match(/^Loser SF(\d)$/);
+        const winnerSF=val.match(/^Winner SF(\d)$/);
+        if(wMatch){
+          const w=winnerOfMatch(parseInt(wMatch[1]));
+          if(w)m[rkey]=w;
+        } else if(loserSF){
+          // SF1 = match 101, SF2 = match 102
+          const sfId=loserSF[1]==='1'?101:102;
+          const l=loserOfMatch(sfId);
+          if(l)m[rkey]=l;
+        } else if(winnerSF){
+          const sfId=winnerSF[1]==='1'?101:102;
+          const w=winnerOfMatch(sfId);
+          if(w)m[rkey]=w;
+        }
+      });
+    });
+  });
+
+  _resolvedCache=resolved;
+  _resolvedCacheKey=key;
+  return resolved;
+}
+
+// Compute, for every team, the single flat stage-bonus value based on how far
+// they progressed (per your scoring: R32 +3, R16 +6, QF +9, SF +12, Final/runner-up +15... 
+// using your existing convention from teamStatuses, kb values: 3,6,9,12,15)
+function computeStageBonuses(){
+  const resolved=getResolvedMatches();
+  const bonus={};
+  function reached(matchIds,points){
+    matchIds.forEach(id=>{
+      const m=resolved.find(x=>x.id===id);
+      if(!m)return;
+      // Both participants in this match "reached" this stage by playing in it
+      [m.resolvedHome,m.resolvedAway].forEach(name=>{
+        if(name&&!name.match(/^(1st|2nd|Best|W M|Loser|Winner)/)){
+          bonus[name]=Math.max(bonus[name]||0,points);
+        }
+      });
+    });
+  }
+  // Reaching R32 isn't bonus-worthy on its own in your scheme (group exit = 0),
+  // R32 itself participating = "reached R32" but real bonus starts once they
+  // WIN a round and advance. So: bonus reflects furthest round they WON INTO.
+  // Recompute using winners only:
+  function wonInto(stageMatchIds,points){
+    stageMatchIds.forEach(id=>{
+      const m=resolved.find(x=>x.id===id);
+      if(!m)return;
+      const res=S.matchResults&&S.matchResults[id];
+      if(!res||res.home===''||res.away==='')return;
+      const hs=parseInt(res.home),as=parseInt(res.away);
+      if(isNaN(hs)||isNaN(as))return;
+      let winner=null;
+      if(hs>as)winner=m.resolvedHome;
+      else if(as>hs)winner=m.resolvedAway;
+      else winner=(S.penaltyWinners&&S.penaltyWinners[id])||null;
+      if(winner)bonus[winner]=Math.max(bonus[winner]||0,points);
+    });
+  }
+  wonInto([73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88],3);   // won R32 -> reached R16
+  wonInto([89,90,91,92,93,94,95,96],6);                            // won R16 -> reached QF
+  wonInto([97,98,99,100],9);                                       // won QF -> reached SF
+  wonInto([101,102],12);                                           // won SF -> reached Final
+  wonInto([104],15);                                                // won Final -> Champion
+  return bonus;
+}
+
+// Build a human-readable group standings panel for the Scores page
+function renderGroupStandingsHtml(){
+  const letters=getAllGroupLetters();
+  const {tables}=computeAllGroupTables();
+  let h='<div style="margin-bottom:28px">';
+  h+='<div style="font-size:8px;font-weight:600;letter-spacing:.3em;text-transform:uppercase;color:var(--gold);margin-bottom:14px;display:flex;align-items:center;gap:10px">Group Standings<span style="flex:1;height:1px;background:rgba(201,168,76,.2);display:block"></span></div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">';
+  letters.forEach(l=>{
+    const table=tables[l];
+    h+='<div style="background:var(--ink2);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px">';
+    h+='<div style="font-size:8px;letter-spacing:.2em;text-transform:uppercase;color:var(--silver2);margin-bottom:6px">Group '+l+'</div>';
+    h+='<div style="display:grid;grid-template-columns:1fr 22px 22px 22px 30px;gap:4px;font-size:8px;color:var(--silver2);letter-spacing:.05em;padding-bottom:3px;border-bottom:1px solid var(--border);margin-bottom:3px">';
+    h+='<span></span><span style="text-align:center">P</span><span style="text-align:center">GD</span><span style="text-align:center">Pts</span><span></span></div>';
+    table.forEach((row,i)=>{
+      const qualified=i<2;
+      const isThird=i===2;
+      const gd=row.gf-row.ga;
+      const gdStr=(gd>0?'+':'')+gd;
+      const color=qualified?'var(--emerald2)':isThird?'var(--gold2)':'var(--silver)';
+      h+='<div style="display:grid;grid-template-columns:1fr 22px 22px 22px 30px;gap:4px;font-size:10px;padding:2px 0;color:'+color+'">';
+      h+='<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:Cormorant Garamond,serif;font-style:italic">'+row.name+'</span>';
+      h+='<span style="text-align:center">'+row.pld+'</span>';
+      h+='<span style="text-align:center">'+gdStr+'</span>';
+      h+='<span style="text-align:center;font-weight:600">'+row.pts+'</span>';
+      h+='<span style="text-align:center;font-size:8px">'+(qualified?'Q':isThird?'3rd':'')+'</span>';
+      h+='</div>';
+    });
+    h+='</div>';
+  });
+  h+='</div>';
+  // Best third-placed teams panel, once all groups complete
+  const allComplete=letters.every(l=>isGroupComplete(l));
+  if(allComplete){
+    const bestThirds=computeBestThirdPlace(tables,letters);
+    h+='<div style="margin-top:16px;background:var(--ink2);border:1px solid rgba(201,168,76,.25);border-radius:var(--r);padding:12px 16px">';
+    h+='<div style="font-size:8px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);margin-bottom:8px">Best Third-Placed Teams (top 8 advance)</div>';
+    bestThirds.forEach((t,i)=>{
+      const adv=i<8;
+      h+='<span style="display:inline-block;margin:2px 6px 2px 0;font-family:Cormorant Garamond,serif;font-style:italic;font-size:.85rem;color:'+(adv?'var(--emerald2)':'var(--silver2)')+'">'+(i+1)+'. '+t.name+' ('+t.pts+'pts'+(adv?', advances':'')+')</span>';
+    });
+    h+='<div style="font-size:8px;color:var(--silver2);margin-top:8px;letter-spacing:.04em">Use this ranking as a reference — enter the confirmed Round of 32 matchups manually below once FIFA announces them.</div>';
+    h+='</div>';
+  }
+  h+='</div>';
+  return h;
+}
+
+function resolveBracket(){
+  // Force cache invalidation and recompute (called before scoring so
+  // stage bonuses reflect the very latest results just entered)
+  _resolvedCache=null;_resolvedCacheKey=null;
+  getResolvedMatches();
+}
+
+// ── BRACKET TREE ──
+function renderBracketTree(){
+  const el=document.getElementById('bracket-tree-content');
+  if(!el)return;
+  if(!S.players.length){
+    el.innerHTML='<div style="color:var(--silver2);font-size:10px;letter-spacing:.1em">Add participants and complete the draw first.</div>';
+    return;
+  }
+
+  const drawnTeamNames=new Set(S.players.flatMap(p=>{const d=S.draws[p]||{};return[d.top,d.mid,d.bot].filter(Boolean);}));
+  const isPlaceholder=name=>/^(1st|2nd|Best|W M|Loser|Winner)/.test(name);
+  const resolved=getResolvedMatches();
+  const byId={};resolved.forEach(m=>{byId[m.id]=m;});
+
+  function getWinner(matchId){
+    const m=byId[matchId];
+    if(!m)return null;
+    const res=S.matchResults&&S.matchResults[matchId];
+    if(!res||res.home===''||res.away==='')return null;
+    const hs=parseInt(res.home),as=parseInt(res.away);
+    if(isNaN(hs)||isNaN(as))return null;
+    if(hs>as)return m.resolvedHome;
+    if(as>hs)return m.resolvedAway;
+    return (S.penaltyWinners&&S.penaltyWinners[matchId])||null;
+  }
+
+  // Round definitions: id ranges + display label
+  const rounds=[
+    {label:'Round of 32',ids:[73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88]},
+    {label:'Round of 16',ids:[89,90,91,92,93,94,95,96]},
+    {label:'Quarter-finals',ids:[97,98,99,100]},
+    {label:'Semi-finals',ids:[101,102]},
+    {label:'Final',ids:[104]},
+  ];
+
+  let h='<div class="bracket-scroll"><div class="bracket-rounds">';
+
+  rounds.forEach(round=>{
+    h+='<div class="bracket-round">';
+    h+='<div class="bracket-round-label">'+round.label+'</div>';
+    h+='<div class="bracket-matches">';
+    round.ids.forEach(id=>{
+      const m=byId[id];
+      if(!m){h+='<div class="bracket-match"></div>';return;}
+      const home=m.resolvedHome,away=m.resolvedAway;
+      const homeKnown=!isPlaceholder(home),awayKnown=!isPlaceholder(away);
+      const homeDrawn=drawnTeamNames.has(home),awayDrawn=drawnTeamNames.has(away);
+      const winner=getWinner(id);
+
+      const homeCls='bracket-team'+(homeKnown?' known':'')+(homeDrawn?' drawn':'')+(winner&&winner===home?' winner':'');
+      const awayCls='bracket-team'+(awayKnown?' known':'')+(awayDrawn?' drawn':'')+(winner&&winner===away?' winner':'');
+
+      h+='<div class="bracket-match">';
+      h+='<div class="'+homeCls+'">'+home+'</div>';
+      h+='<div class="'+awayCls+'">'+away+'</div>';
+      // score line if available
+      const res=S.matchResults&&S.matchResults[id];
+      if(res&&res.home!==''&&res.away!==''){
+        h+='<div class="bracket-match-meta">'+res.home+' – '+res.away+(winner?'':' · pending')+'</div>';
+      } else {
+        const bstH=(parseInt(m.time.split(':')[0])+5)%24;
+        h+='<div class="bracket-match-meta">'+String(bstH).padStart(2,'0')+':'+m.time.split(':')[1]+' BST</div>';
+      }
+      h+='</div>';
+    });
+    h+='</div></div>';
+  });
+
+  // Champion card
+  const championWinner=getWinner(104);
+  const champKnown=championWinner&&!isPlaceholder(championWinner);
+  const champDrawn=championWinner&&drawnTeamNames.has(championWinner);
+  h+='<div class="bracket-round" style="justify-content:center">';
+  h+='<div class="bracket-round-label">Champion</div>';
+  h+='<div class="bracket-champion-card">';
+  h+='<div class="trophy">🏆</div>';
+  h+='<div class="champ-name" style="'+(champDrawn?'color:var(--gold2)':champKnown?'color:var(--emerald2)':'color:var(--silver2);font-style:normal;font-size:.7rem;letter-spacing:.05em')+'">'+(champKnown?championWinner:'To be decided')+'</div>';
+  if(champDrawn)h+='<div class="champ-label">Drawn in your sweepstake</div>';
+  h+='</div></div>';
+
+  h+='</div></div>';
+  el.innerHTML=h;
+}
+
 // ── SCORES PAGE ──
 function renderScoresPage(){
   const el=document.getElementById('scores-page-content');if(!el)return;
   if(!S.players.length){el.innerHTML='<div style="color:var(--silver2);font-size:10px;letter-spacing:.1em">Add participants and complete the draw first.</div>';return;}
   const drawnTeamNames=new Set(S.players.flatMap(p=>{const d=S.draws[p]||{};return[d.top,d.mid,d.bot].filter(Boolean);}));
   if(!S.matchResults)S.matchResults={};
+  if(!S.penaltyWinners)S.penaltyWinners={};
+
+  const resolved=getResolvedMatches();
+  const byId={};resolved.forEach(m=>{byId[m.id]=m;});
+
+  const isPlaceholder=name=>/^(1st|2nd|Best|W M|Loser|Winner)/.test(name);
+
+  let h=renderGroupStandingsHtml();
+
   const stages=[
     {key:'Group',label:'Group Stage'},{key:'Round of 32',label:'Round of 32'},
     {key:'Round of 16',label:'Round of 16'},{key:'Quarter-final',label:'Quarter-finals'},
     {key:'Semi-final',label:'Semi-finals'},{key:'3rd Place',label:'3rd Place'},{key:'Final',label:'Final'},
   ];
-  let h='';
   stages.forEach(({key,label})=>{
-    const stageMatches=MATCHES.filter(m=>m.stage.startsWith(key));if(!stageMatches.length)return;
+    const stageMatches=resolved.filter(m=>m.stage.startsWith(key));if(!stageMatches.length)return;
     h+='<div style="font-size:8px;font-weight:600;letter-spacing:.3em;text-transform:uppercase;color:var(--gold);margin:24px 0 10px;display:flex;align-items:center;gap:10px">'+label+'<span style="flex:1;height:1px;background:rgba(201,168,76,.2);display:block"></span></div>';
     const byDate={};
     stageMatches.forEach(match=>{if(!byDate[match.date])byDate[match.date]=[];byDate[match.date].push(match);});
@@ -920,25 +1352,71 @@ function renderScoresPage(){
       h+='<div style="font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--silver2);margin:12px 0 6px">'+d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})+'</div>';
       byDate[date].sort((a,b)=>a.time.localeCompare(b.time)).forEach(match=>{
         const res=S.matchResults[match.id]||{home:'',away:''};
-        const homeDrawn=drawnTeamNames.has(match.home),awayDrawn=drawnTeamNames.has(match.away);
+        const isR32=match.stage==='Round of 32';
+        const homeName=match.resolvedHome,awayName=match.resolvedAway;
+        const homePending=isPlaceholder(homeName),awayPending=isPlaceholder(awayName);
+        const homeDrawn=drawnTeamNames.has(homeName),awayDrawn=drawnTeamNames.has(awayName);
         const relevant=homeDrawn||awayDrawn;
         const border=relevant?'border-color:rgba(201,168,76,.4)':'';
         const bg=relevant?'background:var(--ink3)':'background:var(--ink2)';
         const bstH=(parseInt(match.time.split(':')[0])+5)%24;
         const timeStr=String(bstH).padStart(2,'0')+':'+match.time.split(':')[1]+' BST';
         const inputStyle='width:40px;background:var(--ink3);border:1px solid var(--border2);border-radius:2px;color:var(--platinum);font-size:1.1rem;font-family:Cormorant Garamond,serif;font-weight:300;padding:5px 4px;text-align:center;';
-        const homeCol=homeDrawn?'var(--gold2)':'var(--platinum)';
-        const awayCol=awayDrawn?'var(--gold2)':'var(--platinum)';
+        const homeCol=homeDrawn?'var(--gold2)':homePending?'var(--silver2)':'var(--platinum)';
+        const awayCol=awayDrawn?'var(--gold2)':awayPending?'var(--silver2)':'var(--platinum)';
         const homeFW=homeDrawn?'font-weight:500':'font-weight:300';
         const awayFW=awayDrawn?'font-weight:500':'font-weight:300';
-        h+='<div style="display:grid;grid-template-columns:52px minmax(0,1fr) 40px 14px 40px minmax(0,1fr);gap:8px;align-items:center;'+bg+';border:1px solid var(--border);'+border+';border-radius:var(--r);padding:10px 12px;margin-bottom:5px">';
+
+        if(isR32){
+          // Round of 32: confirm teams manually (FIFA's third-place pairing
+          // table isn't reproduced here). Two text fields let you type the
+          // confirmed names once announced; original placeholder shown as a hint.
+          const manual=S.manualR32&&S.manualR32[match.id]||{home:'',away:''};
+          const teamInputStyle='width:100%;background:var(--ink3);border:1px solid var(--border2);border-radius:2px;color:var(--gold2);font-size:.85rem;font-family:Cormorant Garamond,serif;font-style:italic;padding:5px 8px;';
+          h+='<div style="background:'+(relevant?'var(--ink3)':'var(--ink2)')+';border:1px solid var(--border);'+(relevant?'border-color:rgba(201,168,76,.4)':'')+';border-radius:var(--r);padding:10px 12px;margin-bottom:5px">';
+          h+='<div style="display:grid;grid-template-columns:52px minmax(0,1fr) 40px 14px 40px minmax(0,1fr);gap:8px;align-items:center">';
+          h+='<span style="font-size:8px;color:var(--silver2);letter-spacing:.04em;white-space:nowrap">'+timeStr+'</span>';
+          h+='<input type="text" placeholder="'+match.home+'" value="'+manual.home+'" style="'+teamInputStyle+'text-align:right" data-match="'+match.id+'" data-side="home" class="r32-team-input">';
+          h+='<input type="number" min="0" max="99" value="'+res.home+'" style="'+inputStyle+'" data-match="'+match.id+'" data-side="home" class="match-score-input">';
+          h+='<span style="font-size:9px;color:var(--silver2);text-align:center;font-family:Cormorant Garamond,serif">&#8211;</span>';
+          h+='<input type="number" min="0" max="99" value="'+res.away+'" style="'+inputStyle+'" data-match="'+match.id+'" data-side="away" class="match-score-input">';
+          h+='<input type="text" placeholder="'+match.away+'" value="'+manual.away+'" style="'+teamInputStyle+'" data-match="'+match.id+'" data-side="away" class="r32-team-input">';
+          h+='</div>';
+          h+='<div style="font-size:7px;color:var(--silver2);letter-spacing:.08em;margin-top:6px;padding-left:60px">Type confirmed team name once announced — placeholder shows the official slot ('+match.home+' / '+match.away+')</div>';
+          // Penalty selector for R32 if both teams confirmed and scores level
+          if(manual.home&&manual.away&&res.home!==''&&res.away!==''&&!isNaN(parseInt(res.home))&&!isNaN(parseInt(res.away))&&parseInt(res.home)===parseInt(res.away)){
+            const curPen=S.penaltyWinners[match.id]||'';
+            h+='<div style="display:flex;align-items:center;gap:8px;margin-top:6px;padding-left:60px;font-size:8px;letter-spacing:.1em;color:var(--silver2)">Won on penalties: ';
+            h+='<select class="penalty-winner-select" data-match="'+match.id+'" style="background:var(--ink2);border:1px solid var(--border2);border-radius:2px;color:var(--gold2);font-size:9px;padding:3px 8px;font-family:Montserrat,sans-serif">';
+            h+='<option value="">— select —</option>';
+            h+='<option value="'+manual.home+'" '+(curPen===manual.home?'selected':'')+'>'+manual.home+'</option>';
+            h+='<option value="'+manual.away+'" '+(curPen===manual.away?'selected':'')+'>'+manual.away+'</option>';
+            h+='</select></div>';
+          }
+          h+='</div>';
+          return;
+        }
+
+        h+='<div style="display:grid;grid-template-columns:52px minmax(0,1fr) 40px 14px 40px minmax(0,1fr);gap:8px;align-items:center;'+bg+';border:1px solid var(--border);'+border+';border-radius:var(--r);padding:10px 12px;margin-bottom:5px'+((homePending||awayPending)?';opacity:0.6':'')+'">';
         h+='<span style="font-size:8px;color:var(--silver2);letter-spacing:.04em;white-space:nowrap">'+timeStr+'</span>';
-        h+='<span style="font-family:Cormorant Garamond,serif;font-size:.95rem;font-style:italic;color:'+homeCol+';'+homeFW+';text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+match.home+'</span>';
-        h+='<input type="number" min="0" max="99" value="'+res.home+'" style="'+inputStyle+'" data-match="'+match.id+'" data-side="home" class="match-score-input">';
+        h+='<span style="font-family:Cormorant Garamond,serif;font-size:.95rem;font-style:italic;color:'+homeCol+';'+homeFW+';text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+homeName+'</span>';
+        h+='<input type="number" min="0" max="99" value="'+res.home+'" '+(homePending||awayPending?'disabled':'')+' style="'+inputStyle+(homePending||awayPending?'opacity:.3;cursor:not-allowed;':'')+'" data-match="'+match.id+'" data-side="home" class="match-score-input">';
         h+='<span style="font-size:9px;color:var(--silver2);text-align:center;font-family:Cormorant Garamond,serif">&#8211;</span>';
-        h+='<input type="number" min="0" max="99" value="'+res.away+'" style="'+inputStyle+'" data-match="'+match.id+'" data-side="away" class="match-score-input">';
-        h+='<span style="font-family:Cormorant Garamond,serif;font-size:.95rem;font-style:italic;color:'+awayCol+';'+awayFW+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+match.away+'</span>';
+        h+='<input type="number" min="0" max="99" value="'+res.away+'" '+(homePending||awayPending?'disabled':'')+' style="'+inputStyle+(homePending||awayPending?'opacity:.3;cursor:not-allowed;':'')+'" data-match="'+match.id+'" data-side="away" class="match-score-input">';
+        h+='<span style="font-family:Cormorant Garamond,serif;font-size:.95rem;font-style:italic;color:'+awayCol+';'+awayFW+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+awayName+'</span>';
         h+='</div>';
+
+        // Penalty shootout selector — only show for knockout matches with a level score
+        if(match.group===''&&res.home!==''&&res.away!==''&&!isNaN(parseInt(res.home))&&!isNaN(parseInt(res.away))&&parseInt(res.home)===parseInt(res.away)&&!homePending&&!awayPending){
+          const curPen=S.penaltyWinners[match.id]||'';
+          h+='<div style="display:flex;align-items:center;gap:8px;margin:-2px 0 8px;padding-left:60px;font-size:8px;letter-spacing:.1em;color:var(--silver2)">';
+          h+='Won on penalties: ';
+          h+='<select class="penalty-winner-select" data-match="'+match.id+'" style="background:var(--ink3);border:1px solid var(--border2);border-radius:2px;color:var(--gold2);font-size:9px;padding:3px 8px;font-family:Montserrat,sans-serif">';
+          h+='<option value="">— select —</option>';
+          h+='<option value="'+homeName+'" '+(curPen===homeName?'selected':'')+'>'+homeName+'</option>';
+          h+='<option value="'+awayName+'" '+(curPen===awayName?'selected':'')+'>'+awayName+'</option>';
+          h+='</select></div>';
+        }
       });
     });
   });
@@ -955,37 +1433,63 @@ function saveMatchScores(){
     if(!S.matchResults[id])S.matchResults[id]={home:'',away:''};
     S.matchResults[id][side]=inp.value;
   });
+  if(!S.manualR32)S.manualR32={};
+  document.querySelectorAll('.r32-team-input').forEach(inp=>{
+    const id=parseInt(inp.dataset.match),side=inp.dataset.side;
+    if(!S.manualR32[id])S.manualR32[id]={home:'',away:''};
+    S.manualR32[id][side]=inp.value.trim();
+  });
+  if(!S.penaltyWinners)S.penaltyWinners={};
+  document.querySelectorAll('.penalty-winner-select').forEach(sel=>{
+    const id=parseInt(sel.dataset.match);
+    if(sel.value)S.penaltyWinners[id]=sel.value;
+    else delete S.penaltyWinners[id];
+  });
+
+  // Resolve the bracket BEFORE computing points, so knockout stage bonuses
+  // reflect actual progress (real team names replace placeholders)
+  resolveBracket();
+
+  // Stats are tracked for ALL 48 teams (needed for group tables),
+  // not just drawn ones — drawn-team points still drive the sweepstake.
   const teamStats={};
-  const drawnTeamNames=new Set(S.players.flatMap(p=>{const d=S.draws[p]||{};return[d.top,d.mid,d.bot].filter(Boolean);}));
-  drawnTeamNames.forEach(name=>{teamStats[name]={goalsScored:0,goalsConceded:0,wins:0,draws:0,losses:0,matchPts:0};});
-  MATCHES.forEach(match=>{
+  DEFAULTS.forEach(t=>{teamStats[t.name]={goalsScored:0,goalsConceded:0,wins:0,draws:0,losses:0,matchPts:0};});
+
+  // Walk every match using its RESOLVED team names (real names once known)
+  getResolvedMatches().forEach(match=>{
     const res=S.matchResults[match.id];
     if(!res||res.home===''||res.away==='')return;
     const hs=parseInt(res.home),as=parseInt(res.away);
     if(isNaN(hs)||isNaN(as))return;
-    if(teamStats[match.home]!==undefined){
-      teamStats[match.home].goalsScored+=hs;teamStats[match.home].goalsConceded+=as;
-      if(hs>as){teamStats[match.home].wins++;teamStats[match.home].matchPts+=3;}
-      else if(hs===as){teamStats[match.home].draws++;teamStats[match.home].matchPts+=1;}
-      else teamStats[match.home].losses++;
+    const homeName=match.resolvedHome,awayName=match.resolvedAway;
+    if(teamStats[homeName]!==undefined){
+      teamStats[homeName].goalsScored+=hs;teamStats[homeName].goalsConceded+=as;
+      if(hs>as){teamStats[homeName].wins++;teamStats[homeName].matchPts+=3;}
+      else if(hs===as){teamStats[homeName].draws++;teamStats[homeName].matchPts+=1;}
+      else teamStats[homeName].losses++;
     }
-    if(teamStats[match.away]!==undefined){
-      teamStats[match.away].goalsScored+=as;teamStats[match.away].goalsConceded+=hs;
-      if(as>hs){teamStats[match.away].wins++;teamStats[match.away].matchPts+=3;}
-      else if(as===hs){teamStats[match.away].draws++;teamStats[match.away].matchPts+=1;}
-      else teamStats[match.away].losses++;
+    if(teamStats[awayName]!==undefined){
+      teamStats[awayName].goalsScored+=as;teamStats[awayName].goalsConceded+=hs;
+      if(as>hs){teamStats[awayName].wins++;teamStats[awayName].matchPts+=3;}
+      else if(as===hs){teamStats[awayName].draws++;teamStats[awayName].matchPts+=1;}
+      else teamStats[awayName].losses++;
     }
   });
+
+  // Knockout bonus per team — flat per stage REACHED (not cumulative)
+  const stageBonus=computeStageBonuses();
+
+  const drawnTeamNames=new Set(S.players.flatMap(p=>{const d=S.draws[p]||{};return[d.top,d.mid,d.bot].filter(Boolean);}));
   drawnTeamNames.forEach(name=>{
-    const existing=S.teamStatuses[name]||{};
-    const kb=existing.knockoutBonus||0;
-    const stats=teamStats[name]||{};
+    const kb=stageBonus[name]||0;
+    const stats=teamStats[name]||{goalsScored:0,goalsConceded:0,wins:0,draws:0,losses:0};
     const gs=stats.goalsScored||0,gc=stats.goalsConceded||0;
     const wins=stats.wins||0,draws=stats.draws||0,losses=stats.losses||0;
     const winPts=wins*3,drawPts=draws,goalPts=gs,concededPts=gc*-0.5,mp=winPts+drawPts;
     const points=Math.round((goalPts+concededPts+mp+kb)*10)/10;
     S.teamStatuses[name]={goalsScored:gs,goalsConceded:gc,wins,draws,losses,winPts,drawPts,goalPts,concededPts,matchPts:mp,knockoutBonus:kb,points,status:wins+'W '+draws+'D '+losses+'L'};
   });
+
   S.players.forEach(p=>{
     const d=S.draws[p]||{};let total=0;
     [d.top,d.mid,d.bot].filter(Boolean).forEach(name=>{total+=(S.teamStatuses[name]&&S.teamStatuses[name].points)||0;});
