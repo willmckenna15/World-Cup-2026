@@ -435,7 +435,7 @@ input[type=number]{-moz-appearance:textfield!important;appearance:textfield!impo
 <div id="toast" class="toast"></div>
 
 <script>
-const APP_VERSION = 15;
+const APP_VERSION = 16;
 const WORKER_URL = 'https://sweep.wmpmck.workers.dev';
 const RESET_PIN = '7908';
 
@@ -594,19 +594,33 @@ const CONFIRMED_R32 = {
   88:{home:'Colombia',away:'Ghana'},
 };
 
+// Backfill confirmed Round of 32 matchups into a manualR32 object,
+// field-by-field, WITHOUT overwriting anything already filled in
+// (so a manually-typed value always wins over the default). This is
+// safe to call repeatedly — e.g. on every load, and after a cloud sync —
+// since it only ever fills in blanks.
+function mergeConfirmedR32(manualR32){
+  manualR32=manualR32||{};
+  Object.keys(CONFIRMED_R32).forEach(id=>{
+    const def=CONFIRMED_R32[id];
+    if(!manualR32[id])manualR32[id]={home:'',away:''};
+    const existing=manualR32[id];
+    if(!existing.home)existing.home=def.home;
+    if(!existing.away)existing.away=def.away;
+  });
+  return manualR32;
+}
+
 let S=(()=>{
   let loaded=null;
   try{const s=localStorage.getItem('wc26v5');if(s)loaded=JSON.parse(s);}catch(e){}
   if(loaded){
     // Merge in any newly-confirmed matchups the user doesn't already have,
     // without overwriting anything they've entered themselves.
-    if(!loaded.manualR32) loaded.manualR32={};
-    Object.keys(CONFIRMED_R32).forEach(id=>{
-      if(!loaded.manualR32[id]) loaded.manualR32[id]=CONFIRMED_R32[id];
-    });
+    loaded.manualR32=mergeConfirmedR32(loaded.manualR32);
     return loaded;
   }
-  return{players:[],teams:JSON.parse(JSON.stringify(DEFAULTS)),draws:{},scores:{},entryFee:5,matchResults:{},teamStatuses:{},selectedPlayer:null,penaltyWinners:{},manualR32:{...CONFIRMED_R32}};
+  return{players:[],teams:JSON.parse(JSON.stringify(DEFAULTS)),draws:{},scores:{},entryFee:5,matchResults:{},teamStatuses:{},selectedPlayer:null,penaltyWinners:{},manualR32:mergeConfirmedR32({})};
 })();
 
 const saveLocal=()=>localStorage.setItem('wc26v5',JSON.stringify(S));
@@ -623,7 +637,7 @@ async function loadSharedState(){
     if(!res.ok)throw new Error();
     const shared=await res.json();
     if(!shared||!Array.isArray(shared.players)||!shared.draws)return false;
-    S={players:shared.players||[],teams:shared.teams&&Array.isArray(shared.teams)?shared.teams:JSON.parse(JSON.stringify(DEFAULTS)),draws:shared.draws||{},scores:shared.scores||{},entryFee:shared.entryFee||5,matchResults:shared.matchResults||{},teamStatuses:shared.teamStatuses||{},lastUpdated:shared.lastUpdated||null,selectedPlayer:null};
+    S={players:shared.players||[],teams:shared.teams&&Array.isArray(shared.teams)?shared.teams:JSON.parse(JSON.stringify(DEFAULTS)),draws:shared.draws||{},scores:shared.scores||{},entryFee:shared.entryFee||5,matchResults:shared.matchResults||{},teamStatuses:shared.teamStatuses||{},lastUpdated:shared.lastUpdated||null,selectedPlayer:null,manualR32:mergeConfirmedR32(shared.manualR32),penaltyWinners:shared.penaltyWinners||{}};
     saveLocal();return true;
   }catch(e){return false;}
 }
@@ -1649,7 +1663,7 @@ function loadFromUrlHash(){
     if(payload.removedTeams)teams=teams.filter(t=>!payload.removedTeams.includes(t.name));
     if(payload.customTeams)teams=[...teams,...payload.customTeams];
     const scores={};payload.players.forEach(p=>scores[p]=0);
-    S={players:payload.players,teams,draws:payload.draws,scores,entryFee:payload.fee||5,teamStatuses:{},matchResults:{},lastUpdated:null,selectedPlayer:null};
+    S={players:payload.players,teams,draws:payload.draws,scores,entryFee:payload.fee||5,teamStatuses:{},matchResults:{},lastUpdated:null,selectedPlayer:null,manualR32:mergeConfirmedR32({}),penaltyWinners:{}};
     save();return true;
   }catch(e){return false;}
 }
