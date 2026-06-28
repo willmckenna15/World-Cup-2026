@@ -435,7 +435,7 @@ input[type=number]{-moz-appearance:textfield!important;appearance:textfield!impo
 <div id="toast" class="toast"></div>
 
 <script>
-const APP_VERSION = 13;
+const APP_VERSION = 14;
 const WORKER_URL = 'https://sweep.wmpmck.workers.dev';
 const RESET_PIN = '7908';
 
@@ -573,25 +573,38 @@ const DEFAULTS=[
   {name:"DR Congo",flag:"🇨🇩",rank:47,half:"bot"},{name:"Iraq",flag:"🇮🇶",rank:48,half:"bot"},
 ];
 
-let S=(()=>{try{const s=localStorage.getItem('wc26v5');if(s)return JSON.parse(s);}catch(e){}
-  return{players:[],teams:JSON.parse(JSON.stringify(DEFAULTS)),draws:{},scores:{},entryFee:5,matchResults:{},teamStatuses:{},selectedPlayer:null,penaltyWinners:{},manualR32:{
-    // Confirmed Round of 32 matchups as of 28 June 2026 — fill in the rest
-    // yourself as FIFA locks in the remaining slots.
-    73:{home:'South Africa',away:'Canada'},
-    74:{home:'Brazil',away:'Japan'},
-    75:{home:'Germany',away:'Paraguay'},
-    76:{home:'Netherlands',away:'Morocco'},
-    77:{home:'Ivory Coast',away:'Norway'},
-    78:{home:'France',away:'Sweden'},
-    79:{home:'Mexico',away:'Ecuador'},
-    80:{home:'England',away:'DR Congo'},
-    81:{home:'Belgium',away:'Senegal'},
-    82:{home:'United States',away:'Bosnia & Herz.'},
-    84:{home:'Portugal',away:'Croatia'},
-    86:{home:'Australia',away:'Egypt'},
-    87:{home:'Argentina',away:'Cape Verde'},
-    88:{home:'Colombia',away:'Ghana'},
-  }};
+const CONFIRMED_R32 = {
+  // Confirmed Round of 32 matchups as of 28 June 2026 — fill in the rest
+  // yourself as FIFA locks in the remaining slots.
+  73:{home:'South Africa',away:'Canada'},
+  74:{home:'Brazil',away:'Japan'},
+  75:{home:'Germany',away:'Paraguay'},
+  76:{home:'Netherlands',away:'Morocco'},
+  77:{home:'Ivory Coast',away:'Norway'},
+  78:{home:'France',away:'Sweden'},
+  79:{home:'Mexico',away:'Ecuador'},
+  80:{home:'England',away:'DR Congo'},
+  81:{home:'Belgium',away:'Senegal'},
+  82:{home:'United States',away:'Bosnia & Herz.'},
+  84:{home:'Portugal',away:'Croatia'},
+  86:{home:'Australia',away:'Egypt'},
+  87:{home:'Argentina',away:'Cape Verde'},
+  88:{home:'Colombia',away:'Ghana'},
+};
+
+let S=(()=>{
+  let loaded=null;
+  try{const s=localStorage.getItem('wc26v5');if(s)loaded=JSON.parse(s);}catch(e){}
+  if(loaded){
+    // Merge in any newly-confirmed matchups the user doesn't already have,
+    // without overwriting anything they've entered themselves.
+    if(!loaded.manualR32) loaded.manualR32={};
+    Object.keys(CONFIRMED_R32).forEach(id=>{
+      if(!loaded.manualR32[id]) loaded.manualR32[id]=CONFIRMED_R32[id];
+    });
+    return loaded;
+  }
+  return{players:[],teams:JSON.parse(JSON.stringify(DEFAULTS)),draws:{},scores:{},entryFee:5,matchResults:{},teamStatuses:{},selectedPlayer:null,penaltyWinners:{},manualR32:{...CONFIRMED_R32}};
 })();
 
 const saveLocal=()=>localStorage.setItem('wc26v5',JSON.stringify(S));
@@ -1052,7 +1065,7 @@ let _resolvedCache=null;
 let _resolvedCacheKey=null;
 
 function getResolvedMatches(){
-  const key=JSON.stringify(S.matchResults||{});
+  const key=JSON.stringify(S.matchResults||{})+'|'+JSON.stringify(S.manualR32||{})+'|'+JSON.stringify(S.penaltyWinners||{});
   if(_resolvedCache&&_resolvedCacheKey===key)return _resolvedCache;
 
   const {complete,tables,letters}=computeAllGroupTables();
