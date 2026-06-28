@@ -448,7 +448,7 @@ input[type=number]{-moz-appearance:textfield!important;appearance:textfield!impo
 <div id="toast" class="toast"></div>
 
 <script>
-const APP_VERSION = 20;
+const APP_VERSION = 21;
 const WORKER_URL = 'https://sweep.wmpmck.workers.dev';
 const RESET_PIN = '7908';
 
@@ -1425,10 +1425,12 @@ function renderBracketTree(){
     return (S.penaltyWinners&&S.penaltyWinners[matchId])||null;
   }
 
-  // Round definitions: id ranges + display label
+  // Round definitions: ids ordered by bracket nesting (not numeric order),
+  // so each consecutive pair of matches in one round visually lines up
+  // with the match it actually feeds into in the next round.
   const rounds=[
-    {label:'Round of 32',ids:[73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88]},
-    {label:'Round of 16',ids:[89,90,91,92,93,94,95,96]},
+    {label:'Round of 32',ids:[73,76,75,78,83,84,81,82,74,77,79,80,86,87,85,88]},
+    {label:'Round of 16',ids:[89,90,93,94,91,92,95,96]},
     {label:'Quarter-finals',ids:[97,98,99,100]},
     {label:'Semi-finals',ids:[101,102]},
     {label:'Final',ids:[104]},
