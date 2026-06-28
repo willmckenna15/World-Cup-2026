@@ -435,7 +435,7 @@ input[type=number]{-moz-appearance:textfield!important;appearance:textfield!impo
 <div id="toast" class="toast"></div>
 
 <script>
-const APP_VERSION = 9;
+const APP_VERSION = 10;
 const WORKER_URL = 'https://sweep.wmpmck.workers.dev';
 const RESET_PIN = '7908';
 
@@ -576,7 +576,7 @@ const DEFAULTS=[
 let S=(()=>{try{const s=localStorage.getItem('wc26v5');if(s)return JSON.parse(s);}catch(e){}
   return{players:[],teams:JSON.parse(JSON.stringify(DEFAULTS)),draws:{},scores:{},entryFee:5,matchResults:{},teamStatuses:{},selectedPlayer:null,penaltyWinners:{},manualR32:{
     // Confirmed Round of 32 matchups as of 27 June 2026 — fill in the rest
-    // yourself as FIFA locks in the remaining third-place pairings.
+    // yourself as FIFA locks in the remaining slots.
     73:{home:'South Africa',away:'Canada'},
     74:{home:'Brazil',away:'Japan'},
     75:{home:'Germany',away:'Paraguay'},
@@ -584,6 +584,7 @@ let S=(()=>{try{const s=localStorage.getItem('wc26v5');if(s)return JSON.parse(s)
     77:{home:'Ivory Coast',away:'Norway'},
     78:{home:'France',away:'Sweden'},
     82:{home:'United States',away:'Bosnia & Herz.'},
+    87:{home:'Argentina',away:'Cape Verde'},
   }};
 })();
 
