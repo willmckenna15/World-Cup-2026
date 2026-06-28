@@ -214,7 +214,9 @@ input[type=number]{-moz-appearance:textfield!important;appearance:textfield!impo
 .bracket-team.drawn{color:var(--gold2);font-weight:600;background:var(--ink3);border-color:rgba(201,168,76,.35)}
 .bracket-team.winner{color:var(--emerald2)!important;font-weight:600}
 .bracket-team.winner.drawn{color:var(--gold2)!important}
-.bracket-match-meta{font-size:6px;letter-spacing:.15em;text-transform:uppercase;color:var(--silver2);text-align:center;margin-top:3px;white-space:nowrap}
+.bracket-match-meta{font-size:6px;letter-spacing:.12em;text-transform:uppercase;color:var(--silver2);text-align:center;margin-top:3px;line-height:1.6}
+.bracket-match-date{display:block;color:var(--gold);opacity:.75;letter-spacing:.2em}
+.bracket-match-time{display:block;white-space:nowrap}
 /* connector lines between rounds */
 .bracket-round:not(:last-child) .bracket-match::after{
   content:'';position:absolute;top:50%;right:-14px;width:14px;height:1px;
@@ -446,7 +448,7 @@ input[type=number]{-moz-appearance:textfield!important;appearance:textfield!impo
 <div id="toast" class="toast"></div>
 
 <script>
-const APP_VERSION = 19;
+const APP_VERSION = 20;
 const WORKER_URL = 'https://sweep.wmpmck.workers.dev';
 const RESET_PIN = '7908';
 
@@ -1452,13 +1454,14 @@ function renderBracketTree(){
       h+='<div class="bracket-match">';
       h+='<div class="'+homeCls+'">'+home+'</div>';
       h+='<div class="'+awayCls+'">'+away+'</div>';
-      // score line if available
+      // date + score/time line
+      const matchDate=new Date(m.date+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'});
       const res=S.matchResults&&S.matchResults[id];
       if(res&&res.home!==''&&res.away!==''){
-        h+='<div class="bracket-match-meta">'+res.home+' – '+res.away+(winner?'':' · pending')+'</div>';
+        h+='<div class="bracket-match-meta"><span class="bracket-match-date">'+matchDate+'</span><span class="bracket-match-time">'+res.home+' – '+res.away+(winner?'':' · pending')+'</span></div>';
       } else {
         const bstH=(parseInt(m.time.split(':')[0])+5)%24;
-        h+='<div class="bracket-match-meta">'+String(bstH).padStart(2,'0')+':'+m.time.split(':')[1]+' BST</div>';
+        h+='<div class="bracket-match-meta"><span class="bracket-match-date">'+matchDate+'</span><span class="bracket-match-time">'+String(bstH).padStart(2,'0')+':'+m.time.split(':')[1]+' BST</span></div>';
       }
       h+='</div>';
     });
