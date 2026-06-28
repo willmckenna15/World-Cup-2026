@@ -155,6 +155,15 @@ nav{display:flex;justify-content:center;margin-bottom:48px;padding:0 24px}
 .score-info{flex:1;min-width:0}
 .score-toggle{background:none;border:none;color:var(--platinum);cursor:pointer;font-family:'Montserrat',sans-serif;font-size:11px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;padding:0;margin:0 0 4px;text-align:left}
 .score-toggle:hover{color:var(--gold2)}
+.prize-badge{display:inline-block;font-size:7px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;padding:3px 8px;border-radius:2px;margin:0 6px 6px 0;vertical-align:middle;white-space:nowrap}
+.prize-badge.champ-badge{background:rgba(61,184,130,.15);color:var(--emerald2);border:1px solid rgba(61,184,130,.3)}
+.prize-badge.points-badge{background:rgba(100,160,255,.15);color:#7ab0f0;border:1px solid rgba(100,160,255,.3)}
+.prize-badge.ineligible-badge{background:rgba(217,79,79,.12);color:#e87070;border:1px solid rgba(217,79,79,.3)}
+.team-record-pill.eliminated{opacity:.45;filter:grayscale(.65);border-color:var(--border)!important;color:var(--silver2)!important}
+.team-record-pill.eliminated strong{color:var(--silver2)!important}
+.team-breakdown.eliminated{opacity:.5}
+.pill.eliminated{opacity:.7;filter:grayscale(.5);border-color:var(--border)!important;color:var(--silver2)!important}
+.elim-tag{font-family:'Montserrat',sans-serif;font-size:7px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:var(--ruby2);margin-left:4px;opacity:.85}
 .player-team-summary{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
 .team-record-pill{font-family:'Cormorant Garamond',serif;font-size:.86rem;font-style:italic;padding:3px 10px;border-radius:2px;border:1px solid;white-space:nowrap;line-height:1.25}
 .team-record-pill.top{border-color:rgba(61,184,130,.25);color:var(--emerald2)}.team-record-pill.mid{border-color:rgba(100,160,255,.25);color:#7ab0f0}.team-record-pill.bot{border-color:rgba(232,112,112,.25);color:#e87070}.team-record-pill.tbd{border-color:var(--border);color:var(--silver2);font-family:'Montserrat',sans-serif;font-size:8px;font-style:normal;letter-spacing:.1em;text-transform:uppercase}
@@ -409,17 +418,19 @@ input[type=number]{-moz-appearance:textfield!important;appearance:textfield!impo
 
 <!-- SCOREBOARD -->
 <div class="page" id="page-scoreboard">
-  <div class="infobar"><strong>Scoring:</strong> Win +3 · Draw +1 · Loss 0 · +1pt per goal scored · -0.5pt per goal conceded · Stage bonus: R32 +3 · R16 +6 · QF +9 · SF +12 · Runner-up +15 · Champion +15.</div>
+  <div class="infobar"><strong>Scoring:</strong> Win +3 · Draw +1 · Loss 0 · +1pt per goal scored · -0.5pt per goal conceded · Stage bonus: R32 +1.5 · R16 +3 · QF +4.5 · SF +6 · Champion +7.5. <strong>Points Prize rule:</strong> whoever holds the Champion team is not eligible for the Points Prize — it goes to the next-highest scorer instead, so the two prizes can't land on the same person.</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px">
     <div style="background:var(--ink2);border:1px solid rgba(61,184,130,.25);border-radius:var(--r2);padding:16px 20px">
       <div style="font-size:8px;letter-spacing:.3em;text-transform:uppercase;color:var(--emerald2);margin-bottom:4px">&#127942; Champion Prize</div>
       <div id="prize-champion" style="font-family:'Cormorant Garamond',serif;font-size:2rem;font-weight:300;color:var(--emerald2)">&#163;&#8212;</div>
       <div style="font-size:9px;color:var(--silver2);margin-top:2px">Whose team wins the World Cup</div>
+      <div id="prize-champion-holder" style="font-size:10px;color:var(--gold2);margin-top:6px;font-family:'Cormorant Garamond',serif;font-style:italic"></div>
     </div>
     <div style="background:var(--ink2);border:1px solid rgba(100,160,255,.25);border-radius:var(--r2);padding:16px 20px">
       <div style="font-size:8px;letter-spacing:.3em;text-transform:uppercase;color:#7ab0f0;margin-bottom:4px">&#128202; Top Points Prize</div>
       <div id="prize-points" style="font-family:'Cormorant Garamond',serif;font-size:2rem;font-weight:300;color:#7ab0f0">&#163;&#8212;</div>
-      <div style="font-size:9px;color:var(--silver2);margin-top:2px">Most points across all teams</div>
+      <div style="font-size:9px;color:var(--silver2);margin-top:2px">Most points (Champion holder excluded)</div>
+      <div id="prize-points-holder" style="font-size:10px;color:var(--gold2);margin-top:6px;font-family:'Cormorant Garamond',serif;font-style:italic"></div>
     </div>
   </div>
   <div style="display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap;align-items:center">
@@ -435,7 +446,7 @@ input[type=number]{-moz-appearance:textfield!important;appearance:textfield!impo
 <div id="toast" class="toast"></div>
 
 <script>
-const APP_VERSION = 16;
+const APP_VERSION = 18;
 const WORKER_URL = 'https://sweep.wmpmck.workers.dev';
 const RESET_PIN = '7908';
 
@@ -951,19 +962,36 @@ function renderScoreboard(){
   const fmt=n=>Number.isInteger(Number(n))?String(Number(n)):Number(n||0).toFixed(1);
   const signed=n=>Number(n)>0?'+'+fmt(n):fmt(n);
   const ranked=[...S.players].map(p=>({p,sc:S.scores[p]||0,d:S.draws[p]||{}})).sort((a,b)=>b.sc-a.sc);
+
+  // De-bias the Points Prize: whoever holds the Champion team is skipped.
+  const champInfo=getChampionHolder();
+  const pointsWinner=getPointsPrizeWinner(ranked,champInfo);
+  const champHolderEl=document.getElementById('prize-champion-holder');
+  if(champHolderEl){
+    if(champInfo&&champInfo.holder)champHolderEl.textContent='Currently: '+champInfo.holder;
+    else if(champInfo&&champInfo.team)champHolderEl.textContent=champInfo.team+' (undrawn)';
+    else champHolderEl.textContent='';
+  }
+  const pointsHolderEl=document.getElementById('prize-points-holder');
+  if(pointsHolderEl)pointsHolderEl.textContent=pointsWinner?'Currently: '+pointsWinner.p:'';
+
+  const eliminatedTeams=computeEliminatedTeams();
+
   const teamRecord=(team,cls)=>{
     if(!team){const label=cls==='top'?'Elite':cls==='mid'?'Contender':'Underdog';return '<span class="team-record-pill tbd">'+label+' TBD</span>';}
     const td=statuses[team.name]||{};
-    return '<span class="team-record-pill '+cls+'">'+team.flag+' '+team.name+' · <strong>'+(td.wins||0)+'W</strong> '+(td.draws||0)+'D '+(td.losses||0)+'L</span>';
+    const elim=eliminatedTeams.has(team.name);
+    return '<span class="team-record-pill '+cls+(elim?' eliminated':'')+'">'+team.flag+' '+team.name+' · <strong>'+(td.wins||0)+'W</strong> '+(td.draws||0)+'D '+(td.losses||0)+'L'+(elim?' <span class="elim-tag">OUT</span>':'')+'</span>';
   };
   const teamBlock=(team,cls)=>{
     if(!team){const label=cls==='top'?'Elite':cls==='mid'?'Contender':'Underdog';return '<div class="team-breakdown"><span class="pill tbd">'+label+' TBD</span></div>';}
     const td=statuses[team.name]||{};
+    const elim=eliminatedTeams.has(team.name);
     const wins=td.wins||0,draws=td.draws||0,losses=td.losses||0;
     const winPts=td.winPts??(wins*3),drawPts=td.drawPts??draws;
     const goalPts=td.goalPts??td.goalsScored??0,concededPts=td.concededPts??((td.goalsConceded||0)*-0.5);
     const koPts=td.knockoutBonus||0,total=td.points||0;
-    return '<div class="team-breakdown"><span class="pill '+cls+'">'+team.flag+' '+team.name+'</span>'
+    return '<div class="team-breakdown'+(elim?' eliminated':'')+'"><span class="pill '+cls+(elim?' eliminated':'')+'">'+team.flag+' '+team.name+(elim?' <span class="elim-tag">OUT</span>':'')+'</span>'
       +'<div class="stat-line"><span>Wins</span><strong>'+fmt(winPts)+' pts</strong></div>'
       +'<div class="stat-line"><span>Draws</span><strong>'+fmt(drawPts)+' pts</strong></div>'
       +'<div class="stat-line"><span>Goals scored</span><strong class="stat-pos">'+signed(goalPts)+' pts</strong></div>'
@@ -978,9 +1006,16 @@ function renderScoreboard(){
     const card=document.createElement('div');
     card.className='score-card'+(i===0?' gold-rank':'');
     const rl=i===0?'I':i===1?'II':i===2?'III':String(i+1);
+    const isChampHolder=champInfo&&champInfo.holder===p;
+    const isPointsWinner=pointsWinner&&pointsWinner.p===p;
+    let badges='';
+    if(isChampHolder)badges+='<span class="prize-badge champ-badge">&#127942; Champion</span>';
+    if(isPointsWinner)badges+='<span class="prize-badge points-badge">&#128202; Top Points</span>';
+    else if(isChampHolder&&i===0)badges+='<span class="prize-badge ineligible-badge">Points Prize passes to next highest</span>';
     card.innerHTML='<div class="score-rank '+(i===0?'first':i===1?'second':i===2?'third':'')+'">'+rl+'</div>'
       +'<div class="score-info">'
       +'<button class="score-toggle" onclick="this.closest(&quot;.score-card&quot;).classList.toggle(&quot;open&quot;)">'+p+'</button>'
+      +(badges?'<div>'+badges+'</div>':'')
       +'<div class="player-team-summary">'+teamRecord(tt,'top')+teamRecord(mt,'mid')+teamRecord(bt,'bot')+'</div>'
       +'<div class="score-pills score-breakdown-grid">'+teamBlock(tt,'top')+teamBlock(mt,'mid')+teamBlock(bt,'bot')+'</div>'
       +'</div>'
@@ -1225,11 +1260,11 @@ function computeStageBonuses(){
       if(winner)bonus[winner]=Math.max(bonus[winner]||0,points);
     });
   }
-  wonInto([73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88],3);   // won R32 -> reached R16
-  wonInto([89,90,91,92,93,94,95,96],6);                            // won R16 -> reached QF
-  wonInto([97,98,99,100],9);                                       // won QF -> reached SF
-  wonInto([101,102],12);                                           // won SF -> reached Final
-  wonInto([104],15);                                                // won Final -> Champion
+  wonInto([73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88],1.5);  // won R32 -> reached R16
+  wonInto([89,90,91,92,93,94,95,96],3);                             // won R16 -> reached QF
+  wonInto([97,98,99,100],4.5);                                      // won QF -> reached SF
+  wonInto([101,102],6);                                             // won SF -> reached Final
+  wonInto([104],7.5);                                               // won Final -> Champion
   return bonus;
 }
 
@@ -1285,6 +1320,81 @@ function resolveBracket(){
   // stage bonuses reflect the very latest results just entered)
   _resolvedCache=null;_resolvedCacheKey=null;
   getResolvedMatches();
+}
+
+// Who actually won the World Cup, and which participant (if any) drew that
+// team? Used to de-bias the Points Prize — see getPointsPrizeWinner().
+function getChampionHolder(){
+  const resolved=getResolvedMatches();
+  const m=resolved.find(x=>x.id===104);
+  if(!m)return null;
+  const res=S.matchResults&&S.matchResults[104];
+  if(!res||res.home===''||res.away==='')return null;
+  const hs=parseInt(res.home),as=parseInt(res.away);
+  if(isNaN(hs)||isNaN(as))return null;
+  let champion=null;
+  if(hs>as)champion=m.resolvedHome;
+  else if(as>hs)champion=m.resolvedAway;
+  else champion=(S.penaltyWinners&&S.penaltyWinners[104])||null;
+  if(!champion)return null;
+  let holder=null;
+  S.players.forEach(p=>{
+    const d=S.draws[p]||{};
+    if(d.top===champion||d.mid===champion||d.bot===champion)holder=p;
+  });
+  return {team:champion,holder};
+}
+
+// The Points Prize never lands on whoever holds the Champion team — it
+// passes to the next-highest scorer instead, so the two prizes can't
+// both go to the same person. `ranked` is S.players sorted by score desc,
+// as [{p,sc,d}, ...].
+function getPointsPrizeWinner(ranked,champInfo){
+  if(!ranked||!ranked.length)return null;
+  if(!champInfo||!champInfo.holder)return ranked[0];
+  return ranked.find(r=>r.p!==champInfo.holder)||null;
+}
+
+// Every team that's confirmed out of the tournament: finished outside the
+// top two AND outside the best-8 third-placed teams in a completed group,
+// or lost a knockout match (including the Final — the runner-up has no
+// more matches to play either). Used to grey teams out on the Standings page.
+function computeEliminatedTeams(){
+  const eliminated=new Set();
+  const letters=getAllGroupLetters();
+  const {tables}=computeAllGroupTables();
+  const allGroupsComplete=letters.every(l=>isGroupComplete(l));
+  let bestThirdNames=null;
+  if(allGroupsComplete)bestThirdNames=new Set(computeBestThirdPlace(tables,letters).slice(0,8).map(t=>t.name));
+  letters.forEach(l=>{
+    if(!isGroupComplete(l))return;
+    tables[l].forEach((row,idx)=>{
+      if(idx<2)return; // top two qualify automatically
+      if(idx===2){
+        // 3rd place: only knowable once every group has finished
+        if(allGroupsComplete&&bestThirdNames&&!bestThirdNames.has(row.name))eliminated.add(row.name);
+        return;
+      }
+      eliminated.add(row.name); // bottom of the group
+    });
+  });
+  const isPlaceholder=name=>/^(1st|2nd|Best|W M|Loser|Winner)/.test(name);
+  getResolvedMatches().filter(m=>m.group==='').forEach(m=>{
+    const res=S.matchResults&&S.matchResults[m.id];
+    if(!res||res.home===''||res.away==='')return;
+    if(isPlaceholder(m.resolvedHome)||isPlaceholder(m.resolvedAway))return;
+    const hs=parseInt(res.home),as=parseInt(res.away);
+    if(isNaN(hs)||isNaN(as))return;
+    let winner=null,loser=null;
+    if(hs>as){winner=m.resolvedHome;loser=m.resolvedAway;}
+    else if(as>hs){winner=m.resolvedAway;loser=m.resolvedHome;}
+    else{
+      winner=(S.penaltyWinners&&S.penaltyWinners[m.id])||null;
+      if(winner)loser=winner===m.resolvedHome?m.resolvedAway:m.resolvedHome;
+    }
+    if(loser)eliminated.add(loser);
+  });
+  return eliminated;
 }
 
 // ── BRACKET TREE ──
