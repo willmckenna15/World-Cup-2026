@@ -420,7 +420,7 @@ input[type=number]{-moz-appearance:textfield!important;appearance:textfield!impo
 
 <!-- SCOREBOARD -->
 <div class="page" id="page-scoreboard">
-  <div class="infobar"><strong>Scoring:</strong> Win +3 · Draw +1 · Loss 0 · +1pt per goal scored · -0.5pt per goal conceded · Stage bonus: R32 +1.5 · R16 +3 · QF +4.5 · SF +6 · Champion +7.5. <strong>Points Prize rule:</strong> whoever holds the Champion team is not eligible for the Points Prize — it goes to the next-highest scorer instead, so the two prizes can't land on the same person.</div>
+  <div class="infobar"><strong>Scoring:</strong> Win +3 · Draw +1 · Loss 0 · +1pt per goal scored · -0.5pt per goal conceded · Stage bonus (earned just for reaching that round, win or lose): R32 +1.5 · R16 +3 · QF +4.5 · SF +6 · Final +7.5 (both finalists). <strong>Points Prize rule:</strong> whoever holds the Champion team is not eligible for the Points Prize — it goes to the next-highest scorer instead, so the two prizes can't land on the same person.</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px">
     <div style="background:var(--ink2);border:1px solid rgba(61,184,130,.25);border-radius:var(--r2);padding:16px 20px">
       <div style="font-size:8px;letter-spacing:.3em;text-transform:uppercase;color:var(--emerald2);margin-bottom:4px">&#127942; Champion Prize</div>
@@ -448,7 +448,7 @@ input[type=number]{-moz-appearance:textfield!important;appearance:textfield!impo
 <div id="toast" class="toast"></div>
 
 <script>
-const APP_VERSION = 21;
+const APP_VERSION = 22;
 const WORKER_URL = 'https://sweep.wmpmck.workers.dev';
 const RESET_PIN = '7908';
 
@@ -1231,42 +1231,28 @@ function getResolvedMatches(){
 function computeStageBonuses(){
   const resolved=getResolvedMatches();
   const bonus={};
+  const isPlaceholder=name=>/^(1st|2nd|Best|W M|Loser|Winner)/.test(name);
+  // Reaching a round earns its bonus whether the team wins or loses that
+  // round's match — both participants in a match have, by definition,
+  // reached that stage. Losing the Round of 32 still earns the Round of
+  // 32 bonus; only a group-stage exit (never appearing in any knockout
+  // match) earns nothing.
   function reached(matchIds,points){
     matchIds.forEach(id=>{
       const m=resolved.find(x=>x.id===id);
       if(!m)return;
-      // Both participants in this match "reached" this stage by playing in it
       [m.resolvedHome,m.resolvedAway].forEach(name=>{
-        if(name&&!name.match(/^(1st|2nd|Best|W M|Loser|Winner)/)){
+        if(name&&!isPlaceholder(name)){
           bonus[name]=Math.max(bonus[name]||0,points);
         }
       });
     });
   }
-  // Reaching R32 isn't bonus-worthy on its own in your scheme (group exit = 0),
-  // R32 itself participating = "reached R32" but real bonus starts once they
-  // WIN a round and advance. So: bonus reflects furthest round they WON INTO.
-  // Recompute using winners only:
-  function wonInto(stageMatchIds,points){
-    stageMatchIds.forEach(id=>{
-      const m=resolved.find(x=>x.id===id);
-      if(!m)return;
-      const res=S.matchResults&&S.matchResults[id];
-      if(!res||res.home===''||res.away==='')return;
-      const hs=parseInt(res.home),as=parseInt(res.away);
-      if(isNaN(hs)||isNaN(as))return;
-      let winner=null;
-      if(hs>as)winner=m.resolvedHome;
-      else if(as>hs)winner=m.resolvedAway;
-      else winner=(S.penaltyWinners&&S.penaltyWinners[id])||null;
-      if(winner)bonus[winner]=Math.max(bonus[winner]||0,points);
-    });
-  }
-  wonInto([73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88],1.5);  // won R32 -> reached R16
-  wonInto([89,90,91,92,93,94,95,96],3);                             // won R16 -> reached QF
-  wonInto([97,98,99,100],4.5);                                      // won QF -> reached SF
-  wonInto([101,102],6);                                             // won SF -> reached Final
-  wonInto([104],7.5);                                               // won Final -> Champion
+  reached([73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88],1.5); // reached Round of 32
+  reached([89,90,91,92,93,94,95,96],3);                            // reached Round of 16
+  reached([97,98,99,100],4.5);                                     // reached Quarter-final
+  reached([101,102],6);                                            // reached Semi-final
+  reached([104],7.5);                                              // reached Final (both finalists)
   return bonus;
 }
 
